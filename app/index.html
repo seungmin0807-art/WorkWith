@@ -2,117 +2,168 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Workin Home Trainer Prototype</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WorkWith">
+  <meta name="theme-color" content="#0a0f16">
+  <title>WorkWith</title>
+  <script>
+    (function () {
+      if (location.protocol !== "file:") return;
+      const previewUrl = "http://127.0.0.1:8000/";
+      const target = previewUrl + (location.hash || "");
+      location.replace(target);
+    })();
+  </script>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="shell">
-    <article class="column video-column">
-      <header class="column-head">
-        <div>
-          <p class="eyebrow">Overlay Video</p>
-          <h1>Wrong squat overlay</h1>
-        </div>
-        <div class="score-pill">
-          <span>1s avg score</span>
-          <strong id="scoreValue">--</strong>
-        </div>
-      </header>
-
-      <div class="video-stage">
-        <img id="overlayFrame" alt="Squat overlay frame">
-        <div class="video-overlay">
-          <div class="video-badge">
-            <span class="badge-label">Current cue</span>
-            <strong id="currentIssue">기준 자세 범위</strong>
-          </div>
-        </div>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand-block">
+        <p class="eyebrow">AI Personal Training</p>
+        <h1>WorkWith</h1>
       </div>
 
-      <div class="controls">
-        <button id="playToggle" class="action">재생</button>
-        <button id="voiceToggle" class="ghost">음성 피드백 끔</button>
-        <span id="phaseLabel" class="phase-label">Rep 1 · steady</span>
+      <div class="header-side">
+        <div class="session-pill">
+          <span>Exercise</span>
+          <strong>Barbell Back Squat</strong>
+        </div>
       </div>
-    </article>
+    </header>
 
-    <article class="column avatar-column">
-      <header class="column-head">
-        <div>
-          <p class="eyebrow">Pose Avatar</p>
-          <h2>Adult mannequin twin</h2>
-        </div>
-        <p class="legend">
-          <span class="legend-dot live"></span> wrong
-          <span class="legend-dot ref"></span> correct
-        </p>
-      </header>
+    <main class="views">
+      <section class="view active" id="sessionView" data-view="session">
+        <div class="session-layout">
+          <article class="panel video-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Live Capture</p>
+                <h2>사용자 모습</h2>
+              </div>
+              <div class="panel-note">MediaPipe 골격</div>
+            </div>
+            <div class="video-stage">
+              <img id="overlayFrame" class="frame-img" alt="사용자 모습 오버레이 프레임">
+            </div>
+          </article>
 
-      <div id="avatarViewport" class="avatar-viewport"></div>
-    </article>
+          <article class="panel avatar-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">3D Avatar Compare</p>
+                <h2>모범 동작 vs 사용자</h2>
+              </div>
+              <div class="legend-line">
+                <span class="legend-item"><i class="dot dot-blue"></i>모범 동작</span>
+                <span class="legend-item"><i class="dot dot-white"></i>사용자</span>
+                <span class="legend-item"><i class="dot dot-red"></i>위험</span>
+              </div>
+            </div>
+            <div id="avatarViewport" class="avatar-viewport"></div>
+          </article>
 
-    <article class="column info-column">
-      <section class="info-block overview-block">
-        <div class="info-head">
-          <span class="panel-kicker">Overview</span>
-          <h3>Session summary</h3>
+          <article class="panel analysis-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Live Analysis</p>
+                <h2>동작 점수</h2>
+              </div>
+              <div class="score-chip">
+                <span>Score</span>
+                <strong id="scoreValue">--</strong>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <button id="playToggle" class="icon-btn" type="button" aria-label="재생">▶</button>
+              <button id="voiceToggle" class="text-btn" type="button">음성 안내 꺼짐</button>
+              <span id="phaseLabel" class="phase-tag">1차 재생 · 실시간 분석</span>
+            </div>
+
+            <p id="currentIssue" class="current-issue">실시간 추적 중</p>
+
+            <div class="kpi-grid">
+              <div class="kpi-card">
+                <span>AVG</span>
+                <strong id="averageScore">--</strong>
+              </div>
+              <div class="kpi-card">
+                <span>REPS</span>
+                <strong id="repCount">--</strong>
+              </div>
+              <div class="kpi-card">
+                <span>MATCH</span>
+                <strong id="matchValue">--</strong>
+              </div>
+              <div class="kpi-card">
+                <span>ISSUES</span>
+                <strong id="issueCount">--</strong>
+              </div>
+            </div>
+
+            <div id="sessionStateSection" class="stack-section">
+              <p class="section-label">세션 상태</p>
+              <p id="coachText" class="coach-text">실시간 추적을 시작하면 세션 상태가 여기에 표시됩니다.</p>
+              <p id="summaryText" class="summary-text"></p>
+            </div>
+
+            <div id="liveMetricsSection" class="stack-section">
+              <p id="liveMetricsLabel" class="section-label">실시간 수치</p>
+              <div id="metricGrid" class="metric-grid"></div>
+            </div>
+
+            <div id="issueListSection" class="stack-section">
+              <p class="section-label">핵심 교정 포인트</p>
+              <div id="issueList" class="issue-list"></div>
+            </div>
+
+            <div id="reportSection" class="stack-section report-stack compact-pending">
+              <div class="section-head">
+                <p class="section-label">전문의·트레이너 종합 평가</p>
+                <span id="reportStatus" class="status-pill">분석 중...</span>
+              </div>
+              <div id="finalMetricGrid" class="metric-grid final-metric-grid"></div>
+              <div id="expertGrid" class="expert-grid">
+                <article class="expert-card">
+                  <span class="expert-role">전문의 관점</span>
+                  <strong id="medicalStatus">분석 중...</strong>
+                  <p id="medicalDetail" class="detail-copy">세트 종료 후 관절 부담과 안전성 중심의 평가가 표시됩니다.</p>
+                </article>
+                <article class="expert-card">
+                  <span class="expert-role">트레이너 관점</span>
+                  <strong id="trainerStatus">분석 중...</strong>
+                  <p id="trainerDetail" class="detail-copy">세트 종료 후 동작 패턴과 교정 우선순위가 표시됩니다.</p>
+                </article>
+              </div>
+            </div>
+
+            <div id="timeline" class="timeline" aria-label="재생 진행 바"></div>
+          </article>
         </div>
-        <div class="overview-metrics">
-          <div>
-            <span>Average</span>
-            <strong id="averageScore">--</strong>
-          </div>
-          <div>
-            <span>Reps</span>
-            <strong id="repCount">--</strong>
-          </div>
-          <div>
-            <span>Warn below</span>
-            <strong id="thresholdValue">--</strong>
-          </div>
-        </div>
-        <p id="summaryText" class="summary-copy">분석 데이터를 불러오는 중입니다.</p>
       </section>
+    </main>
+  </div>
 
-      <section class="info-block coach-block">
-        <div class="info-head">
-          <span class="panel-kicker">Live coaching</span>
-          <h3>Current note</h3>
-        </div>
-        <p id="coachText" class="coach-copy">분석 결과를 준비 중입니다.</p>
-      </section>
-
-      <section class="info-block metrics-block">
-        <div class="info-head">
-          <span class="panel-kicker">Comparison</span>
-          <h3>Current metrics</h3>
-        </div>
-        <div id="metricGrid" class="metric-grid"></div>
-      </section>
-
-      <section class="info-block findings-block">
-        <div class="info-head">
-          <span class="panel-kicker">Top findings</span>
-          <h3>Most common drifts</h3>
-        </div>
-        <div id="findingList" class="finding-list"></div>
-      </section>
-
-      <section class="info-block timeline-block">
-        <div class="info-head">
-          <span class="panel-kicker">Timeline</span>
-          <h3>Issue segments</h3>
-        </div>
-        <div id="timeline" class="timeline" aria-label="Issue timeline"></div>
-      </section>
-    </article>
-  </main>
-
-  <script src="app.js?v=20260413-5"></script>
+  <script src="data/session-data.js"></script>
+  <script src="app.js?v=20260420-chrome-fix"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol !== "file:") {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").catch((error) => {
+          console.warn("SW registration failed:", error);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

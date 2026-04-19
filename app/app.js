@@ -1,22 +1,9 @@
 const WARNING_SCORE_THRESHOLD = 76;
 const VOICE_SCORE_THRESHOLD = 72;
 const VOICE_MIN_GAP_MS = 8000;
-const VOICE_REPEAT_GAP_MS = 15000;
+const VOICE_REPEAT_GAP_MS = 14000;
 const VOICE_STABLE_FRAMES = 4;
 const BLINK_INTERVAL_MS = 280;
-
-const SUPPORT_JOINT_NAMES = [
-  "left_hip",
-  "right_hip",
-  "left_knee",
-  "right_knee",
-  "left_ankle",
-  "right_ankle",
-  "left_heel",
-  "right_heel",
-  "left_foot_index",
-  "right_foot_index",
-];
 
 const GROUND_JOINT_NAMES = [
   "left_ankle",
@@ -27,15 +14,6 @@ const GROUND_JOINT_NAMES = [
   "right_foot_index",
 ];
 
-const FOOT_LOCK_BLEND = {
-  left_heel: 0.88,
-  right_heel: 0.88,
-  left_foot_index: 0.84,
-  right_foot_index: 0.84,
-  left_ankle: 0.72,
-  right_ankle: 0.72,
-};
-
 const FACE_JOINT_NAMES = [
   "nose",
   "left_eye",
@@ -44,46 +22,64 @@ const FACE_JOINT_NAMES = [
   "right_ear",
 ];
 
+const PRIMARY_METRIC_IDS = new Set([
+  "match_rate",
+  "hip_hinge_norm",
+  "knee_forward_norm",
+  "balance_offset_norm",
+  "heel_lift_norm",
+  "posterior_chain_score",
+]);
+
 const ISSUE_HOT_NAMES = {
-  knee_flexion: (side) => [`${side}_hip`, `${side}_knee`, `${side}_ankle`],
-  shin_lean: (side) => [`${side}_knee`, `${side}_ankle`, `${side}_heel`, `${side}_foot_index`],
-  torso_lean: (side) => [`${side}_shoulder`, `${side}_hip`],
-  depth: () => ["left_hip", "right_hip", "left_knee", "right_knee"],
+  hip_hinge: (side) => [`${side}_hip`, `${side}_shoulder`, `${side}_knee`],
+  knee_drive: (side) => [`${side}_hip`, `${side}_knee`, `${side}_ankle`, `${side}_foot_index`],
+  balance: () => ["left_shoulder", "right_shoulder", "left_hip", "right_hip"],
+  heel_pressure: (side) => [`${side}_ankle`, `${side}_heel`, `${side}_foot_index`],
+  posterior_chain: (side) => [`${side}_hip`, `${side}_knee`, `${side}_heel`],
 };
 
 const avatarPalette = {
   live: {
-    fill0: "rgba(255, 255, 255, 0.4)",
-    fill1: "rgba(255, 255, 255, 0.32)",
-    fill2: "rgba(255, 255, 255, 0.26)",
-    edge: "rgba(255, 255, 255, 0.18)",
-    glow: "rgba(255, 255, 255, 0.08)",
-    joint: "rgba(255, 255, 255, 0.45)",
-    hot0: "rgba(255, 160, 148, 0.96)",
-    hot1: "rgba(255, 88, 76, 0.98)",
-    hotEdge: "rgba(255, 228, 224, 0.52)",
-    hotGlow: "rgba(255, 87, 77, 0.32)",
+    fill0: "rgba(255, 255, 255, 0.46)",
+    fill1: "rgba(255, 255, 255, 0.30)",
+    fill2: "rgba(255, 255, 255, 0.18)",
+    edge: "rgba(255, 255, 255, 0.16)",
+    glow: "rgba(255, 255, 255, 0.10)",
+    joint: "rgba(255, 255, 255, 0.42)",
+    hot0: "rgba(255, 183, 173, 0.96)",
+    hot1: "rgba(255, 106, 96, 0.98)",
+    hotEdge: "rgba(255, 227, 223, 0.64)",
+    hotGlow: "rgba(255, 106, 96, 0.46)",
   },
   reference: {
-    fill0: "rgba(92, 206, 255, 0.3)",
-    fill1: "rgba(82, 176, 255, 0.22)",
-    fill2: "rgba(52, 120, 255, 0.16)",
-    edge: "rgba(118, 204, 255, 0.22)",
-    glow: "rgba(82, 223, 255, 0.14)",
-    joint: "rgba(164, 231, 255, 0.26)",
-    hot0: "rgba(92, 206, 255, 0.3)",
-    hot1: "rgba(52, 120, 255, 0.22)",
-    hotEdge: "rgba(118, 204, 255, 0.22)",
-    hotGlow: "rgba(82, 223, 255, 0.14)",
+    fill0: "rgba(87, 206, 255, 0.30)",
+    fill1: "rgba(66, 168, 255, 0.18)",
+    fill2: "rgba(43, 105, 255, 0.12)",
+    edge: "rgba(127, 218, 255, 0.20)",
+    glow: "rgba(87, 206, 255, 0.12)",
+    joint: "rgba(180, 234, 255, 0.22)",
+    hot0: "rgba(87, 206, 255, 0.30)",
+    hot1: "rgba(43, 105, 255, 0.16)",
+    hotEdge: "rgba(127, 218, 255, 0.20)",
+    hotGlow: "rgba(87, 206, 255, 0.12)",
   },
 };
 
 const state = {
   data: null,
   scoreBuckets: new Map(),
+  analysisBuckets: new Map(),
   currentFrame: null,
   voiceEnabled: false,
   avatar: null,
+  imageCache: new Map(),
+  preloadWindow: 18,
+  resizeTimerId: null,
+  session: {
+    passIndex: 0,
+    totalPasses: 2,
+  },
   player: {
     isPlaying: false,
     timerId: null,
@@ -107,28 +103,34 @@ const elements = {
   phaseLabel: document.getElementById("phaseLabel"),
   averageScore: document.getElementById("averageScore"),
   repCount: document.getElementById("repCount"),
-  thresholdValue: document.getElementById("thresholdValue"),
+  matchValue: document.getElementById("matchValue"),
+  issueCount: document.getElementById("issueCount"),
   summaryText: document.getElementById("summaryText"),
   coachText: document.getElementById("coachText"),
+  sessionStateSection: document.getElementById("sessionStateSection"),
+  liveMetricsSection: document.getElementById("liveMetricsSection"),
+  liveMetricsLabel: document.getElementById("liveMetricsLabel"),
+  issueListSection: document.getElementById("issueListSection"),
+  issueList: document.getElementById("issueList"),
   metricGrid: document.getElementById("metricGrid"),
-  findingList: document.getElementById("findingList"),
+  reportSection: document.getElementById("reportSection"),
+  finalMetricGrid: document.getElementById("finalMetricGrid"),
+  reportStatus: document.getElementById("reportStatus"),
+  expertGrid: document.getElementById("expertGrid"),
+  medicalStatus: document.getElementById("medicalStatus"),
+  medicalDetail: document.getElementById("medicalDetail"),
+  trainerStatus: document.getElementById("trainerStatus"),
+  trainerDetail: document.getElementById("trainerDetail"),
   timeline: document.getElementById("timeline"),
   avatarViewport: document.getElementById("avatarViewport"),
 };
 
-const metricLabels = {
-  torso_lean_deg: "Torso lean",
-  knee_angle: "Knee angle",
-  depth_score: "Depth score",
-  shin_lean_deg: "Shin lean",
-};
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function fmt(value, digits = 1, suffix = "") {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "--";
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
 }
 
 function median(values) {
@@ -178,10 +180,13 @@ function vecLerp(a, b, t) {
 function averagePoints(points) {
   const valid = points.filter(Boolean);
   if (!valid.length) return null;
-  const total = valid.reduce((acc, point) => ({
-    x: acc.x + point.x,
-    y: acc.y + point.y,
-  }), { x: 0, y: 0 });
+  const total = valid.reduce(
+    (acc, point) => ({
+      x: acc.x + point.x,
+      y: acc.y + point.y,
+    }),
+    { x: 0, y: 0 },
+  );
   return {
     x: total.x / valid.length,
     y: total.y / valid.length,
@@ -231,6 +236,120 @@ function buildScoreBuckets(frames) {
   return buckets;
 }
 
+function buildAnalysisBuckets(frames) {
+  const buckets = new Map();
+
+  frames.forEach((frame) => {
+    const second = Math.floor(frame.time_sec);
+    const bucket = buckets.get(second) || {
+      second,
+      count: 0,
+      scoreSum: 0,
+      repCount: 1,
+      issueCountSum: 0,
+      issueMap: new Map(),
+      metricMap: new Map(),
+    };
+
+    bucket.count += 1;
+    bucket.scoreSum += frame.score || 0;
+    bucket.repCount = Math.max(bucket.repCount, frame.rep_index || 1);
+    bucket.issueCountSum += (frame.issues || []).length;
+
+    (frame.issues || []).forEach((issue) => {
+      const current = bucket.issueMap.get(issue.id) || {
+        id: issue.id,
+        label: issue.label,
+        severitySum: 0,
+        hits: 0,
+      };
+      current.severitySum += issue.severity || 0;
+      current.hits += 1;
+      bucket.issueMap.set(issue.id, current);
+    });
+
+    (frame.analysis_metrics || []).forEach((metric) => {
+      if (!PRIMARY_METRIC_IDS.has(metric.id)) return;
+      const current = bucket.metricMap.get(metric.id) || {
+        id: metric.id,
+        label: metric.label,
+        unit: metric.unit || "",
+        valueSum: 0,
+        valueCount: 0,
+        referenceSum: 0,
+        referenceCount: 0,
+        deltaSum: 0,
+        deltaCount: 0,
+      };
+
+      if (typeof metric.value === "number" && Number.isFinite(metric.value)) {
+        current.valueSum += metric.value;
+        current.valueCount += 1;
+      }
+      if (typeof metric.reference === "number" && Number.isFinite(metric.reference)) {
+        current.referenceSum += metric.reference;
+        current.referenceCount += 1;
+      }
+      if (typeof metric.delta === "number" && Number.isFinite(metric.delta)) {
+        current.deltaSum += metric.delta;
+        current.deltaCount += 1;
+      }
+      bucket.metricMap.set(metric.id, current);
+    });
+
+    buckets.set(second, bucket);
+  });
+
+  const orderedSeconds = [...buckets.keys()].sort((a, b) => a - b);
+  let cumulativeScore = 0;
+  let cumulativeFrames = 0;
+  let cumulativeRepCount = 1;
+
+  orderedSeconds.forEach((second) => {
+    const bucket = buckets.get(second);
+    cumulativeScore += bucket.scoreSum;
+    cumulativeFrames += bucket.count;
+    cumulativeRepCount = Math.max(cumulativeRepCount, bucket.repCount);
+
+    const metrics = [...bucket.metricMap.values()].map((metric) => ({
+      id: metric.id,
+      label: metric.label,
+      unit: metric.unit,
+      value: metric.valueCount ? metric.valueSum / metric.valueCount : null,
+      reference: metric.referenceCount ? metric.referenceSum / metric.referenceCount : null,
+      delta: metric.deltaCount ? metric.deltaSum / metric.deltaCount : null,
+    }));
+
+    const topIssue = [...bucket.issueMap.values()]
+      .map((issue) => ({
+        id: issue.id,
+        label: issue.label,
+        severity: issue.hits ? issue.severitySum / issue.hits : 0,
+      }))
+      .sort((a, b) => b.severity - a.severity)[0] || null;
+
+    buckets.set(second, {
+      avgScore: bucket.scoreSum / Math.max(bucket.count, 1),
+      runningAvgScore: cumulativeScore / Math.max(cumulativeFrames, 1),
+      repCount: cumulativeRepCount,
+      issueCount: Math.round(bucket.issueCountSum / Math.max(bucket.count, 1)),
+      topIssue,
+      metrics,
+    });
+  });
+
+  return buckets;
+}
+
+function isReportPass() {
+  return state.session.passIndex >= 1;
+}
+
+function resetSessionProgress() {
+  state.session.passIndex = 0;
+  resetVoiceTracking();
+}
+
 function getDisplayedScore(frame) {
   const bucket = state.scoreBuckets.get(Math.floor(frame.time_sec));
   return bucket ? bucket.avg : frame.score;
@@ -240,6 +359,30 @@ function getFramePath(index) {
   const media = state.data.media;
   const padded = String(index).padStart(4, "0");
   return `${media.overlay_frame_dir}/${media.overlay_frame_pattern.replace("{index:04d}", padded)}`;
+}
+
+function preloadFrame(index) {
+  if (!state.data || index < 0 || index >= state.data.frames.length || state.imageCache.has(index)) {
+    return;
+  }
+  const image = new Image();
+  image.decoding = "async";
+  image.src = getFramePath(index);
+  state.imageCache.set(index, image);
+}
+
+function preloadFramesAround(index) {
+  const end = Math.min(state.data.frames.length - 1, index + state.preloadWindow);
+  for (let frameIndex = index; frameIndex <= end; frameIndex += 1) {
+    preloadFrame(frameIndex);
+  }
+
+  const keepFrom = Math.max(0, index - state.preloadWindow);
+  state.imageCache.forEach((_, cachedIndex) => {
+    if (cachedIndex < keepFrom) {
+      state.imageCache.delete(cachedIndex);
+    }
+  });
 }
 
 function findNearestFrameIndex(timeSec) {
@@ -261,57 +404,53 @@ function findNearestFrameIndex(timeSec) {
   return Math.abs(frames[a].time_sec - timeSec) <= Math.abs(frames[b].time_sec - timeSec) ? a : b;
 }
 
-function getHotJointNames(issueId) {
-  const primarySide = state.data.input_videos.wrong.primary_side || "left";
-  const resolver = ISSUE_HOT_NAMES[issueId];
-  return new Set(resolver ? resolver(primarySide) : []);
+function getHotJointNames(frame, issueId = null) {
+  const names = new Set(frame?.highlighted_joint_names || []);
+  if (issueId) {
+    const primarySide = state.data.input_videos.wrong.primary_side || "left";
+    const resolver = ISSUE_HOT_NAMES[issueId];
+    (resolver ? resolver(primarySide) : []).forEach((name) => names.add(name));
+  }
+  return names;
 }
 
-function emaPass(sequence, alpha, selectedIndices = null) {
+function emaPass(sequence, alpha) {
   let previous = null;
   return sequence.map((landmarks) => {
     if (!landmarks) {
       return previous ? cloneLandmarks(previous) : null;
     }
-
     if (!previous) {
       previous = cloneLandmarks(landmarks);
       return cloneLandmarks(previous);
     }
 
     const next = cloneLandmarks(landmarks);
-    const jointIndices = selectedIndices || landmarks.map((_, index) => index);
-    jointIndices.forEach((jointIndex) => {
-      for (let coord = 0; coord < 3; coord += 1) {
+    landmarks.forEach((_, jointIndex) => {
+      for (let coord = 0; coord < 4; coord += 1) {
         next[jointIndex][coord] =
           alpha * landmarks[jointIndex][coord] + (1 - alpha) * previous[jointIndex][coord];
       }
-      next[jointIndex][3] =
-        alpha * (landmarks[jointIndex][3] ?? 1) + (1 - alpha) * (previous[jointIndex][3] ?? 1);
     });
     previous = cloneLandmarks(next);
     return next;
   });
 }
 
-function smoothSequence(sequence, alpha, selectedIndices = null) {
-  const forward = emaPass(sequence, alpha, selectedIndices);
-  const backward = emaPass([...sequence].reverse(), alpha, selectedIndices).reverse();
+function smoothSequence(sequence, alpha) {
+  const forward = emaPass(sequence, alpha);
+  const backward = emaPass([...sequence].reverse(), alpha).reverse();
   return sequence.map((landmarks, frameIndex) => {
     if (!landmarks) return null;
     const forwardFrame = forward[frameIndex];
     const backwardFrame = backward[frameIndex];
     if (!forwardFrame || !backwardFrame) return cloneLandmarks(landmarks);
-
-    const result = cloneLandmarks(landmarks);
-    const jointIndices = selectedIndices || landmarks.map((_, index) => index);
-    jointIndices.forEach((jointIndex) => {
-      for (let coord = 0; coord < 4; coord += 1) {
-        result[jointIndex][coord] =
-          (forwardFrame[jointIndex][coord] + backwardFrame[jointIndex][coord]) * 0.5;
-      }
-    });
-    return result;
+    return landmarks.map((point, jointIndex) => [
+      (forwardFrame[jointIndex][0] + backwardFrame[jointIndex][0]) * 0.5,
+      (forwardFrame[jointIndex][1] + backwardFrame[jointIndex][1]) * 0.5,
+      (forwardFrame[jointIndex][2] + backwardFrame[jointIndex][2]) * 0.5,
+      (forwardFrame[jointIndex][3] + backwardFrame[jointIndex][3]) * 0.5,
+    ]);
   });
 }
 
@@ -320,53 +459,22 @@ function buildSupportInfo(landmarks) {
   if (!points.length) return null;
   return {
     groundY: Math.max(...points.map((point) => point[1])),
-    centerX: points.reduce((sum, point) => sum + point[0], 0) / points.length,
-    centerZ: points.reduce((sum, point) => sum + point[2], 0) / points.length,
   };
 }
 
 function buildHeadInfo(landmarks) {
-  const face = averageWorldPoints(landmarks, FACE_JOINT_NAMES);
-  if (face) return face;
   const shoulders = averageWorldPoints(landmarks, ["left_shoulder", "right_shoulder"]);
   const hips = averageWorldPoints(landmarks, ["left_hip", "right_hip"]);
   if (!shoulders || !hips) return null;
-  const torso = {
+  return {
     x: shoulders.x,
-    y: shoulders.y - (hips.y - shoulders.y) * 0.55,
+    y: shoulders.y - (hips.y - shoulders.y) * 0.62,
     z: shoulders.z,
   };
-  return torso;
 }
 
 function buildRootInfo(landmarks) {
   return averageWorldPoints(landmarks, ["left_hip", "right_hip"]);
-}
-
-function buildJointAnchors(sequence, names) {
-  const anchors = {};
-  names.forEach((name) => {
-    const index = getLandmarkIndex(name);
-    if (!Number.isInteger(index)) return;
-
-    const xs = [];
-    const ys = [];
-    const zs = [];
-    sequence.forEach((landmarks) => {
-      if (!landmarks?.[index]) return;
-      xs.push(landmarks[index][0]);
-      ys.push(landmarks[index][1]);
-      zs.push(landmarks[index][2]);
-    });
-
-    if (!xs.length) return;
-    anchors[name] = {
-      x: median(xs),
-      y: median(ys),
-      z: median(zs),
-    };
-  });
-  return anchors;
 }
 
 function distanceBetweenLandmarks(landmarks, a, b) {
@@ -396,7 +504,6 @@ function buildAvatarLayout(sequence) {
     if (root) rootXs.push(root.x);
     if (support) groundYs.push(support.groundY);
     if (support && head) bodyHeights.push(support.groundY - head.y);
-
     shoulderSpans.push(distanceBetweenLandmarks(landmarks, "left_shoulder", "right_shoulder"));
     hipSpans.push(distanceBetweenLandmarks(landmarks, "left_hip", "right_hip"));
     upperArms.push(distanceBetweenLandmarks(landmarks, "left_shoulder", "left_elbow"));
@@ -440,239 +547,11 @@ function prepareAvatarTrack(roleKey) {
     ]);
   });
 
-  const jointIndices = SUPPORT_JOINT_NAMES.map(getLandmarkIndex).filter(Number.isInteger);
-  const smoothed = smoothSequence(sequence, 0.42);
-  const supportSmoothed = smoothSequence(smoothed, 0.16, jointIndices);
-
-  const supports = supportSmoothed.map((landmarks) => (landmarks ? buildSupportInfo(landmarks) : null));
-  const heads = supportSmoothed.map((landmarks) => (landmarks ? buildHeadInfo(landmarks) : null));
-  const roots = supportSmoothed.map((landmarks) => (landmarks ? buildRootInfo(landmarks) : null));
-
-  const targetGroundY = median(supports.map((support) => support?.groundY));
-  const targetRootX = median(roots.map((root) => root?.x));
-  const targetRootZ = median(roots.map((root) => root?.z));
-  const targetBodyHeight = median(
-    supports.map((support, index) => {
-      if (!support || !heads[index]) return null;
-      return support.groundY - heads[index].y;
-    }),
-  );
-
-  const stabilized = supportSmoothed.map((landmarks, index) => {
-    if (!landmarks) return null;
-    const support = supports[index];
-    const head = heads[index];
-    const root = roots[index];
-    if (
-      !support ||
-      !head ||
-      !root ||
-      targetGroundY === null ||
-      targetBodyHeight === null ||
-      targetRootX === null ||
-      targetRootZ === null
-    ) {
-      return cloneLandmarks(landmarks);
-    }
-
-    const currentBodyHeight = support.groundY - head.y;
-    const scale = currentBodyHeight
-      ? clamp(1 + ((targetBodyHeight / currentBodyHeight) - 1) * 0.2, 0.985, 1.015)
-      : 1;
-
-    return landmarks.map((point) => [
-      targetRootX + (point[0] - root.x) * scale,
-      targetGroundY + (point[1] - support.groundY) * scale,
-      targetRootZ + (point[2] - root.z) * scale,
-      point[3] ?? 1,
-    ]);
-  });
-
-  const footAnchors = buildJointAnchors(stabilized, Object.keys(FOOT_LOCK_BLEND));
-  const footLocked = stabilized.map((landmarks) => {
-    if (!landmarks) return null;
-    const next = cloneLandmarks(landmarks);
-
-    Object.entries(FOOT_LOCK_BLEND).forEach(([name, amount]) => {
-      const index = getLandmarkIndex(name);
-      const anchor = footAnchors[name];
-      if (!Number.isInteger(index) || !anchor || !next[index]) return;
-      next[index][0] = next[index][0] + (anchor.x - next[index][0]) * amount;
-      next[index][1] = next[index][1] + (anchor.y - next[index][1]) * amount;
-      next[index][2] = next[index][2] + (anchor.z - next[index][2]) * amount;
-    });
-
-    return next;
-  });
-
-  const supportLocked = smoothSequence(footLocked, 0.12, jointIndices);
-  const finalTrack = smoothSequence(supportLocked, 0.48);
+  const finalTrack = smoothSequence(smoothSequence(sequence, 0.72), 0.82);
   return {
     frames: finalTrack,
     layout: buildAvatarLayout(finalTrack),
   };
-}
-
-function buildTimeline() {
-  elements.timeline.innerHTML = "";
-
-  const base = document.createElement("div");
-  base.className = "timeline-base";
-  elements.timeline.appendChild(base);
-
-  const duration = state.data.input_videos.wrong.duration_sec || 1;
-  state.data.issue_segments.forEach((segment) => {
-    const node = document.createElement("button");
-    node.type = "button";
-    node.className = "timeline-segment";
-    node.dataset.issue = segment.id;
-    node.style.left = `${(segment.start_time / duration) * 100}%`;
-    node.style.width = `${Math.max(((segment.end_time - segment.start_time + 0.1) / duration) * 100, 0.6)}%`;
-    node.title = `${segment.label} · ${segment.start_time.toFixed(1)}s`;
-    node.addEventListener("click", () => {
-      seekToTime(segment.start_time);
-      play();
-    });
-    elements.timeline.appendChild(node);
-  });
-
-  const cursor = document.createElement("div");
-  cursor.className = "timeline-cursor";
-  cursor.id = "timelineCursor";
-  elements.timeline.appendChild(cursor);
-}
-
-function renderFindings() {
-  elements.findingList.innerHTML = "";
-  state.data.overview.top_findings.forEach((item) => {
-    const segment = state.data.issue_segments.find((entry) => entry.id === item.id);
-    const node = document.createElement("button");
-    node.type = "button";
-    node.className = "finding-item";
-    const suffix = item.id === "depth" ? "" : "°";
-    node.innerHTML = `
-      <strong>${item.label}</strong>
-      <p>${fmt(item.avg_delta, 1, suffix)} avg · ${fmt(item.peak_delta, 1, suffix)} peak</p>
-    `;
-    node.addEventListener("click", () => {
-      if (segment) {
-        seekToTime(segment.start_time);
-        play();
-      }
-    });
-    elements.findingList.appendChild(node);
-  });
-}
-
-function renderMetrics(frame) {
-  const wrongMetrics = frame.wrong.metrics;
-  const refMetrics = frame.reference.metrics;
-  const rows = [
-    ["torso_lean_deg", "°"],
-    ["knee_angle", "°"],
-    ["depth_score", ""],
-    ["shin_lean_deg", "°"],
-  ];
-
-  elements.metricGrid.innerHTML = "";
-  rows.forEach(([key, suffix]) => {
-    const node = document.createElement("article");
-    node.className = "metric-card";
-    node.innerHTML = `
-      <span>${metricLabels[key]}</span>
-      <strong>${fmt(wrongMetrics?.[key], 1, suffix)}</strong>
-      <em>ref ${fmt(refMetrics?.[key], 1, suffix)}</em>
-    `;
-    elements.metricGrid.appendChild(node);
-  });
-}
-
-function ensureAvatarCanvas() {
-  const canvas = document.createElement("canvas");
-  canvas.className = "avatar-canvas";
-  elements.avatarViewport.innerHTML = "";
-  elements.avatarViewport.appendChild(canvas);
-  return canvas;
-}
-
-function resizeAvatarCanvas() {
-  if (!state.avatar) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const width = Math.max(1, Math.floor(elements.avatarViewport.clientWidth * dpr));
-  const height = Math.max(1, Math.floor(elements.avatarViewport.clientHeight * dpr));
-  if (state.avatar.canvas.width !== width || state.avatar.canvas.height !== height) {
-    state.avatar.canvas.width = width;
-    state.avatar.canvas.height = height;
-  }
-}
-
-function transformPoint(rawPoint) {
-  const x = rawPoint[0] || 0;
-  const y = (rawPoint[1] || 0) - 0.17;
-  const z = rawPoint[2] || 0;
-  const yaw = 0.06;
-  const tilt = -0.04;
-
-  const cosY = Math.cos(yaw);
-  const sinY = Math.sin(yaw);
-  const x1 = x * cosY - z * sinY;
-  const z1 = x * sinY + z * cosY;
-
-  const cosX = Math.cos(tilt);
-  const sinX = Math.sin(tilt);
-  const y1 = y * cosX - z1 * sinX;
-  const z2 = y * sinX + z1 * cosX;
-
-  return { x: x1, y: y1, z: z2 };
-}
-
-function projectPoint(point, width, height) {
-  const cameraZ = 5.2;
-  const scale = 4.05 / (cameraZ - point.z);
-  return {
-    x: width * 0.5 + point.x * width * 0.17 * scale,
-    y: height * 0.5 + point.y * height * 0.23 * scale,
-  };
-}
-
-function normalizeProjectedPoints(projected, width, height) {
-  const pick = (name) => {
-    const index = getLandmarkIndex(name);
-    return Number.isInteger(index) ? projected[index] : null;
-  };
-
-  const supportPoints = [
-    pick("left_ankle"),
-    pick("right_ankle"),
-    pick("left_heel"),
-    pick("right_heel"),
-    pick("left_foot_index"),
-    pick("right_foot_index"),
-  ].filter(Boolean);
-  const shoulderMid = averagePoints([pick("left_shoulder"), pick("right_shoulder")]);
-  const hipMid = averagePoints([pick("left_hip"), pick("right_hip")]);
-  const facePoints = FACE_JOINT_NAMES.map(pick).filter(Boolean);
-
-  if (!supportPoints.length || !shoulderMid || !hipMid) {
-    return projected;
-  }
-
-  const torsoLength = vecLength(vecSub(hipMid, shoulderMid));
-  const groundY = Math.max(...supportPoints.map((point) => point.y));
-  const topY = facePoints.length
-    ? Math.min(...facePoints.map((point) => point.y))
-    : shoulderMid.y - torsoLength * 0.8;
-  const bodyHeight = Math.max(groundY - topY, 1);
-  const centerX = (shoulderMid.x + hipMid.x) * 0.5;
-  const targetHeight = height * 0.72;
-  const targetGroundY = height * 0.86;
-  const targetCenterX = width * 0.5;
-  const scale = clamp(targetHeight / bodyHeight, 1.15, 5.4);
-
-  return projected.map((point) => ({
-    x: (point.x - centerX) * scale + targetCenterX,
-    y: (point.y - groundY) * scale + targetGroundY,
-  }));
 }
 
 function fitLimbChain(start, middle, end, upperTarget, lowerTarget, fallbackDir) {
@@ -686,14 +565,14 @@ function fitLimbChain(start, middle, end, upperTarget, lowerTarget, fallbackDir)
       ? vecNormalize(vecSub(end, start), fallbackDir)
       : fallbackDir;
   const rawUpper = middle ? vecLength(vecSub(middle, start)) : upperTarget;
-  const fittedUpper = clamp(rawUpper || upperTarget, upperTarget * 0.92, upperTarget * 1.16);
+  const fittedUpper = clamp(rawUpper || upperTarget, upperTarget * 0.88, upperTarget * 1.18);
   const fittedMiddle = vecAdd(start, vecScale(upperDirection, fittedUpper));
 
   const lowerDirection = end
     ? vecNormalize(vecSub(end, middle || fittedMiddle), upperDirection)
     : upperDirection;
   const rawLower = end && middle ? vecLength(vecSub(end, middle)) : lowerTarget;
-  const fittedLower = clamp(rawLower || lowerTarget, lowerTarget * 0.92, lowerTarget * 1.18);
+  const fittedLower = clamp(rawLower || lowerTarget, lowerTarget * 0.88, lowerTarget * 1.2);
   const fittedEnd = vecAdd(fittedMiddle, vecScale(lowerDirection, fittedLower));
 
   return {
@@ -704,10 +583,11 @@ function fitLimbChain(start, middle, end, upperTarget, lowerTarget, fallbackDir)
 
 function buildProjectedFrame(landmarks, width, height, layout) {
   if (!Array.isArray(landmarks) || !landmarks.length) return null;
-  const targetHeight = height * 0.62;
-  const targetGroundY = height * 0.85;
+
+  const targetHeight = height * 0.64;
+  const targetGroundY = height * 0.84;
   const targetCenterX = width * 0.5;
-  const scale = clamp(targetHeight / Math.max(layout?.bodyHeight || 1, 1), 0.22, 0.48);
+  const scale = clamp(targetHeight / Math.max(layout?.bodyHeight || 1, 1), 0.24, 0.52);
   const centerX = layout?.centerX ?? 0;
   const groundY = layout?.groundY ?? 0;
 
@@ -738,36 +618,30 @@ function buildProjectedFrame(landmarks, width, height, layout) {
 
   const shoulderMid = averagePoints([leftShoulder, rightShoulder]);
   const hipMid = averagePoints([leftHip, rightHip]);
-  const supportMid = averagePoints([
-    leftAnkle,
-    rightAnkle,
-    pick("left_heel"),
-    pick("right_heel"),
-    leftFoot,
-    rightFoot,
-  ]);
-  const faceMid = averagePoints(FACE_JOINT_NAMES.map(pick).filter(Boolean));
-  if (!shoulderMid || !hipMid || !supportMid) return null;
+  if (!shoulderMid || !hipMid) return null;
 
   const torsoAxis = vecNormalize(vecSub(hipMid, shoulderMid), { x: 0, y: 1 });
-  let lateralAxis = vecNormalize(vecSub(rightShoulder || shoulderMid, leftShoulder || shoulderMid), vecPerp(torsoAxis));
+  let lateralAxis = vecNormalize(
+    vecSub(rightShoulder || shoulderMid, leftShoulder || shoulderMid),
+    vecPerp(torsoAxis),
+  );
   if (Math.abs(vecDot(torsoAxis, lateralAxis)) > 0.45) {
     lateralAxis = vecNormalize(vecPerp(torsoAxis), { x: 1, y: 0 });
   }
 
-  const bodyHeight = clamp((layout?.bodyHeight || 1) * scale, height * 0.5, height * 0.66);
-  const headUnit = clamp(bodyHeight / 8.2, height * 0.03, height * 0.06);
+  const bodyHeight = clamp((layout?.bodyHeight || 1) * scale, height * 0.46, height * 0.7);
+  const headUnit = clamp(bodyHeight / 8.1, height * 0.034, height * 0.06);
   const measuredShoulderHalf = vecLength(vecSub(rightShoulder || shoulderMid, leftShoulder || shoulderMid)) * 0.5;
   const measuredHipHalf = vecLength(vecSub(rightHip || hipMid, leftHip || hipMid)) * 0.5;
   const shoulderHalf = clamp(
-    Math.max(measuredShoulderHalf, ((layout?.shoulderSpan || 0) * scale) * 0.5) * 1.03,
+    Math.max(measuredShoulderHalf, ((layout?.shoulderSpan || 0) * scale) * 0.5) * 1.02,
     headUnit * 0.78,
-    headUnit * 1.2,
+    headUnit * 1.22,
   );
   const hipHalf = clamp(
-    Math.max(measuredHipHalf, ((layout?.hipSpan || 0) * scale) * 0.5) * 1.01,
-    headUnit * 0.52,
-    headUnit * 0.9,
+    Math.max(measuredHipHalf, ((layout?.hipSpan || 0) * scale) * 0.5) * 1.02,
+    headUnit * 0.54,
+    headUnit * 0.94,
   );
 
   const torso = {
@@ -778,11 +652,11 @@ function buildProjectedFrame(landmarks, width, height, layout) {
   };
   torso.chestLeft = vecLerp(torso.leftShoulder, torso.leftHip, 0.24);
   torso.chestRight = vecLerp(torso.rightShoulder, torso.rightHip, 0.24);
-  torso.waistLeft = vecLerp(torso.leftShoulder, torso.leftHip, 0.72);
-  torso.waistRight = vecLerp(torso.rightShoulder, torso.rightHip, 0.72);
+  torso.waistLeft = vecLerp(torso.leftShoulder, torso.leftHip, 0.74);
+  torso.waistRight = vecLerp(torso.rightShoulder, torso.rightHip, 0.74);
   torso.neck = shoulderMid;
   torso.sternum = vecLerp(shoulderMid, hipMid, 0.28);
-  torso.headCenter = faceMid ? vecAdd(faceMid, vecScale(torsoAxis, -headUnit * 0.04)) : vecAdd(shoulderMid, vecScale(torsoAxis, -headUnit * 0.96));
+  torso.headCenter = vecAdd(shoulderMid, vecScale(torsoAxis, -headUnit * 0.98));
 
   const leftArm = fitLimbChain(
     torso.leftShoulder,
@@ -790,7 +664,7 @@ function buildProjectedFrame(landmarks, width, height, layout) {
     leftWrist,
     Math.max((layout?.upperArm || 0) * scale, headUnit * 1.45),
     Math.max((layout?.forearm || 0) * scale, headUnit * 1.42),
-    vecNormalize(vecAdd(vecScale(lateralAxis, -1), vecScale(torsoAxis, 0.2)), { x: -1, y: 0 }),
+    vecNormalize(vecAdd(vecScale(lateralAxis, -1), vecScale(torsoAxis, 0.22)), { x: -1, y: 0 }),
   );
   const rightArm = fitLimbChain(
     torso.rightShoulder,
@@ -798,12 +672,11 @@ function buildProjectedFrame(landmarks, width, height, layout) {
     rightWrist,
     Math.max((layout?.upperArm || 0) * scale, headUnit * 1.45),
     Math.max((layout?.forearm || 0) * scale, headUnit * 1.42),
-    vecNormalize(vecAdd(vecScale(lateralAxis, 1), vecScale(torsoAxis, 0.2)), { x: 1, y: 0 }),
+    vecNormalize(vecAdd(vecScale(lateralAxis, 1), vecScale(torsoAxis, 0.22)), { x: 1, y: 0 }),
   );
 
   return {
     headUnit,
-    torsoAxis,
     torso,
     joints: {
       leftShoulder: torso.leftShoulder,
@@ -828,32 +701,35 @@ function drawBackdrop(ctx, width, height) {
   ctx.clearRect(0, 0, width, height);
 
   const background = ctx.createLinearGradient(0, 0, 0, height);
-  background.addColorStop(0, "rgba(9, 14, 18, 1)");
-  background.addColorStop(1, "rgba(4, 7, 12, 1)");
+  background.addColorStop(0, "rgba(8, 12, 18, 1)");
+  background.addColorStop(1, "rgba(4, 7, 11, 1)");
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
 
-  const halo = ctx.createRadialGradient(width * 0.5, height * 0.16, 10, width * 0.5, height * 0.16, width * 0.5);
-  halo.addColorStop(0, "rgba(82, 223, 255, 0.18)");
-  halo.addColorStop(1, "rgba(82, 223, 255, 0)");
-  ctx.fillStyle = halo;
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = "rgba(82, 223, 255, 0.07)";
+  ctx.strokeStyle = "rgba(87, 206, 255, 0.08)";
   ctx.lineWidth = 1;
-  for (let i = 0; i <= 8; i += 1) {
-    const y = height * (0.12 + i * 0.095);
+  const horizonY = height * 0.28;
+  const floorY = height * 0.86;
+  for (let i = 0; i < 7; i += 1) {
+    const t = i / 6;
+    const y = horizonY + (floorY - horizonY) * (t * t);
     ctx.beginPath();
-    ctx.moveTo(width * 0.06, y);
-    ctx.lineTo(width * 0.94, y);
+    ctx.moveTo(width * (0.18 - t * 0.08), y);
+    ctx.lineTo(width * (0.82 + t * 0.08), y);
     ctx.stroke();
   }
 
-  for (let i = 0; i <= 6; i += 1) {
-    const x = width * (0.12 + i * 0.12);
+  for (let i = 0; i < 7; i += 1) {
+    const t = i / 6;
+    const xLeft = width * (0.2 + t * 0.1);
+    const xRight = width * (0.8 - t * 0.1);
     ctx.beginPath();
-    ctx.moveTo(x, height * 0.12);
-    ctx.lineTo(x, height * 0.88);
+    ctx.moveTo(width * 0.5, horizonY);
+    ctx.lineTo(xLeft, floorY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(width * 0.5, horizonY);
+    ctx.lineTo(xRight, floorY);
     ctx.stroke();
   }
 }
@@ -867,7 +743,7 @@ function drawCapsule(ctx, start, end, width, palette, isHot) {
     gradient.addColorStop(1, palette.hot1);
   } else {
     gradient.addColorStop(0, palette.fill0);
-    gradient.addColorStop(0.52, palette.fill1);
+    gradient.addColorStop(0.5, palette.fill1);
     gradient.addColorStop(1, palette.fill2);
   }
 
@@ -875,7 +751,7 @@ function drawCapsule(ctx, start, end, width, palette, isHot) {
   ctx.strokeStyle = gradient;
   ctx.lineCap = "round";
   ctx.lineWidth = width;
-  ctx.shadowBlur = isHot ? width * 0.42 : width * 0.18;
+  ctx.shadowBlur = isHot ? width * 0.46 : width * 0.2;
   ctx.shadowColor = isHot ? palette.hotGlow : palette.glow;
   ctx.beginPath();
   ctx.moveTo(start.x, start.y);
@@ -884,8 +760,8 @@ function drawCapsule(ctx, start, end, width, palette, isHot) {
 
   ctx.fillStyle = isHot ? palette.hot1 : palette.joint;
   ctx.beginPath();
-  ctx.arc(start.x, start.y, width * 0.28, 0, Math.PI * 2);
-  ctx.arc(end.x, end.y, width * 0.28, 0, Math.PI * 2);
+  ctx.arc(start.x, start.y, width * 0.26, 0, Math.PI * 2);
+  ctx.arc(end.x, end.y, width * 0.26, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -910,7 +786,7 @@ function drawPolygon(ctx, points, palette, isHot) {
 
   ctx.save();
   ctx.fillStyle = gradient;
-  ctx.strokeStyle = isHot ? palette.hotEdge || palette.hot1 : palette.edge;
+  ctx.strokeStyle = isHot ? palette.hotEdge : palette.edge;
   ctx.lineWidth = 1.2;
   ctx.shadowBlur = isHot ? 18 : 8;
   ctx.shadowColor = isHot ? palette.hotGlow : palette.glow;
@@ -936,11 +812,16 @@ function drawAdultFigure(ctx, frameData, hotNames, palette, isGhost = false) {
 
   ctx.save();
   if (isGhost) {
-    ctx.globalAlpha = 0.88;
+    ctx.globalAlpha = 0.92;
   }
 
   drawPolygon(ctx, [torso.leftShoulder, torso.rightShoulder, torso.chestRight, torso.chestLeft], palette, false);
-  drawPolygon(ctx, [torso.chestLeft, torso.chestRight, torso.waistRight, torso.rightHip, torso.leftHip, torso.waistLeft], palette, false);
+  drawPolygon(
+    ctx,
+    [torso.chestLeft, torso.chestRight, torso.waistRight, torso.rightHip, torso.leftHip, torso.waistLeft],
+    palette,
+    false,
+  );
 
   drawCapsule(ctx, joints.leftShoulder, joints.leftElbow, head * 0.33, palette, isHot("left_shoulder", "left_elbow"));
   drawCapsule(ctx, joints.leftElbow, joints.leftWrist, head * 0.27, palette, isHot("left_elbow", "left_wrist"));
@@ -957,16 +838,35 @@ function drawAdultFigure(ctx, frameData, hotNames, palette, isGhost = false) {
   drawPolygon(
     ctx,
     [
-      { x: torso.headCenter.x - head * 0.33, y: torso.headCenter.y - head * 0.2 },
-      { x: torso.headCenter.x + head * 0.33, y: torso.headCenter.y - head * 0.2 },
-      { x: torso.headCenter.x + head * 0.29, y: torso.headCenter.y + head * 0.56 },
-      { x: torso.headCenter.x - head * 0.29, y: torso.headCenter.y + head * 0.56 },
+      { x: torso.headCenter.x - head * 0.34, y: torso.headCenter.y - head * 0.24 },
+      { x: torso.headCenter.x + head * 0.34, y: torso.headCenter.y - head * 0.24 },
+      { x: torso.headCenter.x + head * 0.28, y: torso.headCenter.y + head * 0.48 },
+      { x: torso.headCenter.x - head * 0.28, y: torso.headCenter.y + head * 0.48 },
     ],
     palette,
     false,
   );
 
   ctx.restore();
+}
+
+function ensureAvatarCanvas() {
+  const canvas = document.createElement("canvas");
+  canvas.className = "avatar-canvas";
+  elements.avatarViewport.innerHTML = "";
+  elements.avatarViewport.appendChild(canvas);
+  return canvas;
+}
+
+function resizeAvatarCanvas() {
+  if (!state.avatar) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.floor(elements.avatarViewport.clientWidth * dpr));
+  const height = Math.max(1, Math.floor(elements.avatarViewport.clientHeight * dpr));
+  if (state.avatar.canvas.width !== width || state.avatar.canvas.height !== height) {
+    state.avatar.canvas.width = width;
+    state.avatar.canvas.height = height;
+  }
 }
 
 function renderAvatar() {
@@ -995,13 +895,6 @@ function renderAvatar() {
 
   drawAdultFigure(ctx, referenceFrame, new Set(), avatarPalette.reference, true);
   drawAdultFigure(ctx, wrongFrame, state.avatar.hotNames || new Set(), avatarPalette.live, false);
-
-  ctx.fillStyle = "rgba(245, 246, 247, 0.88)";
-  ctx.font = `${Math.max(12, Math.round(height * 0.03))}px "Space Grotesk", sans-serif`;
-  ctx.fillText("stabilized adult mannequin", width * 0.06, height * 0.08);
-  ctx.fillStyle = "rgba(155, 167, 179, 0.88)";
-  ctx.font = `${Math.max(11, Math.round(height * 0.022))}px "Pretendard", sans-serif`;
-  ctx.fillText("white = wrong, blue ghost = correct", width * 0.06, height * 0.13);
 }
 
 function initAvatar(avatarTracks) {
@@ -1024,8 +917,168 @@ function initAvatar(avatarTracks) {
     }, BLINK_INTERVAL_MS),
   };
 
-  window.addEventListener("resize", renderAvatar);
+  window.addEventListener("resize", () => {
+    window.clearTimeout(state.resizeTimerId);
+    state.resizeTimerId = window.setTimeout(renderAvatar, 160);
+  });
+
   renderAvatar();
+}
+
+function renderIssueList() {
+  elements.issueList.innerHTML = "";
+  const issues = state.data?.overview?.top_findings || [];
+
+  if (!issues.length) {
+    const node = document.createElement("div");
+    node.className = "issue-card";
+    node.innerHTML = `
+      <div class="issue-top">
+        <strong>안정적 세트</strong>
+        <span>good</span>
+      </div>
+      <div class="issue-bar"><i style="width: 18%"></i></div>
+    `;
+    elements.issueList.appendChild(node);
+    return;
+  }
+
+  issues.slice(0, 3).forEach((issue) => {
+    const node = document.createElement("div");
+    node.className = "issue-card";
+    node.innerHTML = `
+      <div class="issue-top">
+        <strong>${issue.label}</strong>
+        <span>${fmt(issue.severity * 100, 0, "%")}</span>
+      </div>
+      <div class="issue-bar"><i style="width: ${Math.max(12, issue.severity * 100)}%"></i></div>
+    `;
+    elements.issueList.appendChild(node);
+  });
+}
+
+function renderMetrics(metrics) {
+  elements.metricGrid.innerHTML = "";
+  (metrics || []).forEach((metric) => {
+    const unit = metric.unit || "";
+    const digits = unit === "deg" ? 1 : 0;
+    const node = document.createElement("article");
+    node.className = "metric-card";
+    if (typeof metric.delta === "number" && Math.abs(metric.delta) >= (unit === "deg" ? 6 : 10)) {
+      node.classList.add("alert");
+    }
+
+    const valueText = metric.value == null ? "--" : `${metric.value.toFixed(digits)}${unit}`;
+    const refText = metric.reference == null ? "" : `ref ${metric.reference.toFixed(digits)}${unit}`;
+    const gapText = metric.delta == null ? "" : `gap ${Math.abs(metric.delta).toFixed(digits)}${unit}`;
+
+    node.innerHTML = `
+      <span>${metric.label}</span>
+      <strong>${valueText}</strong>
+      <em>${gapText}${refText ? ` · ${refText}` : ""}</em>
+    `;
+    elements.metricGrid.appendChild(node);
+  });
+}
+
+function getLiveMetrics(metrics) {
+  const preferredIds = ["match_rate", "knee_forward_norm", "hip_hinge_norm", "heel_lift_norm"];
+  return preferredIds
+    .map((id) => (metrics || []).find((metric) => metric.id === id))
+    .filter(Boolean);
+}
+
+function getReportMatchScore() {
+  const matchMetric = (state.data?.report?.final_scores || []).find((metric) => metric.id === "match");
+  if (typeof matchMetric?.value === "number" && Number.isFinite(matchMetric.value)) {
+    return matchMetric.value;
+  }
+  return state.data?.overview?.average_score || 0;
+}
+
+function getCompactFinalMetrics() {
+  const preferredIds = ["match", "knee_load", "heel_contact"];
+  const reportMetrics = state.data.report.final_scores || [];
+  return preferredIds
+    .map((id) => reportMetrics.find((metric) => metric.id === id))
+    .filter(Boolean);
+}
+
+function renderFinalMetrics(isReady) {
+  elements.finalMetricGrid.innerHTML = "";
+  if (!isReady) {
+    elements.finalMetricGrid.hidden = true;
+    return;
+  }
+
+  elements.finalMetricGrid.hidden = false;
+  const metrics = getCompactFinalMetrics();
+
+  metrics.forEach((metric) => {
+    const node = document.createElement("article");
+    node.className = "metric-card";
+    const valueText =
+      typeof metric.value === "number" && Number.isFinite(metric.value) ? `${Math.round(metric.value)}%` : "--";
+    if (isReady && typeof metric.value === "number" && metric.value <= 82) {
+      node.classList.add("alert");
+    }
+    node.innerHTML = `
+      <span>${metric.label}</span>
+      <strong>${valueText}</strong>
+      <em>${isReady ? "세트 종료 기준" : "분석 중..."}</em>
+    `;
+    elements.finalMetricGrid.appendChild(node);
+  });
+}
+
+function setAnalysisMode(reportReady) {
+  elements.sessionStateSection.hidden = true;
+  elements.liveMetricsSection.hidden = reportReady;
+  elements.summaryText.hidden = reportReady;
+  elements.liveMetricsLabel.textContent = reportReady ? "종합 평가 수치" : "실시간 수치";
+  elements.reportSection.classList.toggle("compact-pending", !reportReady);
+  elements.reportSection.classList.toggle("report-ready", reportReady);
+  elements.expertGrid.classList.toggle("report-ready", reportReady);
+}
+
+function buildTimeline() {
+  elements.timeline.innerHTML = "";
+
+  const base = document.createElement("div");
+  base.className = "timeline-base";
+  elements.timeline.appendChild(base);
+
+  const progress = document.createElement("div");
+  progress.className = "timeline-progress";
+  progress.id = "timelineProgress";
+  elements.timeline.appendChild(progress);
+
+  const cursor = document.createElement("div");
+  cursor.className = "timeline-cursor";
+  cursor.id = "timelineCursor";
+  elements.timeline.appendChild(cursor);
+
+  elements.timeline.addEventListener("click", (event) => {
+    const rect = elements.timeline.getBoundingClientRect();
+    if (!rect.width) return;
+    const ratio = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const duration = state.data.input_videos.wrong.duration_sec || 1;
+    const wasPlaying = state.player.isPlaying;
+    seekToTime(duration * ratio);
+    if (wasPlaying) {
+      play();
+    }
+  });
+}
+
+function formatPhase(frame) {
+  const labels = {
+    descent: "하강",
+    ascent: "상승",
+    steady: "정지",
+  };
+  const cycleLabel = isReportPass() ? "2차 재생 · 종합 평가" : "1차 재생 · 실시간 분석";
+  return `${cycleLabel} · Rep ${frame.rep_index} · ${labels[frame.phase] || frame.phase}`;
 }
 
 function resetVoiceTracking() {
@@ -1034,6 +1087,7 @@ function resetVoiceTracking() {
 }
 
 function maybeSpeak(frame, warningIssue) {
+  if (isReportPass()) return;
   if (!state.voiceEnabled || !warningIssue || !("speechSynthesis" in window)) return;
   if (frame.score > VOICE_SCORE_THRESHOLD) {
     resetVoiceTracking();
@@ -1055,9 +1109,9 @@ function maybeSpeak(frame, warningIssue) {
   if (now - state.voice.lastSpokenAt < VOICE_MIN_GAP_MS) return;
   if (state.voice.lastSpokenIssueId === issueId && now - state.voice.lastSpokenAt < VOICE_REPEAT_GAP_MS) return;
 
-  const utterance = new SpeechSynthesisUtterance(frame.coach_text);
+  const utterance = new SpeechSynthesisUtterance(frame.voice_text || frame.coach_text);
   utterance.lang = "ko-KR";
-  utterance.rate = 0.97;
+  utterance.rate = 0.98;
   window.speechSynthesis.speak(utterance);
 
   state.voice.lastSpokenIssueId = issueId;
@@ -1069,32 +1123,76 @@ function updateFrame(frame) {
   if (!frame) return;
   state.currentFrame = frame;
 
-  const displayedScore = getDisplayedScore(frame);
-  const topIssue = (frame.issues || [])[0] || null;
+  const second = Math.floor(frame.time_sec);
+  const bucket = state.analysisBuckets.get(second) || {
+    avgScore: getDisplayedScore(frame),
+    runningAvgScore: getDisplayedScore(frame),
+    repCount: frame.rep_index || 1,
+    issueCount: (frame.issues || []).length,
+    topIssue: (frame.issues || [])[0] || null,
+    metrics: (frame.analysis_metrics || []).filter((metric) => PRIMARY_METRIC_IDS.has(metric.id)),
+  };
+  const displayedScore = bucket.avgScore;
+  const topIssue = bucket.topIssue || (frame.issues || [])[0] || null;
   const warningIssue = topIssue && displayedScore <= WARNING_SCORE_THRESHOLD ? topIssue : null;
   const currentIndex = state.player.index;
+  const reportReady = isReportPass();
+  const overview = state.data.overview;
+  const report = state.data.report;
+  const finalMatchScore = getReportMatchScore();
+  const reportFocus = (overview.top_findings || [])
+    .slice(0, 2)
+    .map((item) => item.label)
+    .join(" · ");
 
-  elements.scoreValue.textContent = `${Math.round(displayedScore)}`;
-  elements.currentIssue.textContent = warningIssue ? warningIssue.label : "기준 자세 범위";
-  elements.phaseLabel.textContent = `Rep ${frame.rep_index} · ${frame.phase}`;
-  elements.coachText.textContent = warningIssue
-    ? frame.coach_text
-    : "아바타는 발 접지 기준과 시간축 스무딩을 적용한 안정화 모션으로 표시 중입니다.";
+  setAnalysisMode(reportReady);
 
-  renderMetrics(frame);
+  elements.scoreValue.textContent = `${Math.round(reportReady ? finalMatchScore : displayedScore)}`;
+  elements.averageScore.textContent = `${Math.round(reportReady ? overview.average_score : bucket.runningAvgScore)}`;
+  elements.repCount.textContent = `${reportReady ? overview.rep_count : bucket.repCount}`;
+  elements.matchValue.textContent = `${Math.round(reportReady ? finalMatchScore : displayedScore)}%`;
+  elements.issueCount.textContent = `${reportReady ? (overview.top_findings || []).length : bucket.issueCount}`;
+  elements.currentIssue.textContent = reportReady ? report.headline : "실시간 추적 중";
+  elements.phaseLabel.textContent = formatPhase(frame);
+  elements.coachText.textContent = reportReady
+    ? `${reportFocus} 중심으로 종합 평가를 정리했습니다.`
+    : "실시간 수치를 1초 단위 평균으로 집계하고 있습니다.";
+  elements.summaryText.textContent = reportReady
+    ? "전문의와 트레이너 관점 평가는 아래에서 확인할 수 있습니다."
+    : "마지막 반복까지 추적한 뒤, 다음 재생에서 종합 평가를 표시합니다.";
+
+  renderMetrics(reportReady ? [] : getLiveMetrics(bucket.metrics));
+  renderFinalMetrics(reportReady);
+
+  elements.issueListSection.hidden = true;
+  elements.issueList.innerHTML = "";
+
+  elements.reportStatus.textContent = reportReady ? "평가 완료" : "분석 중...";
+  elements.reportStatus.classList.toggle("ready", reportReady);
+  elements.medicalStatus.textContent = reportReady ? report.medical_status : "분석 중...";
+  elements.medicalDetail.textContent = reportReady
+    ? "무릎이 먼저 전진하고 뒤꿈치 지지가 약해 관절 전면 부담이 커질 수 있습니다. 깊이를 조금 줄이고 안정성을 먼저 확보하세요."
+    : "";
+  elements.trainerStatus.textContent = reportReady ? report.trainer_status : "분석 중...";
+  elements.trainerDetail.textContent = reportReady
+    ? "내려갈 때 엉덩이를 먼저 뒤로 보내고, 뒤꿈치와 발 중앙으로 바닥을 눌러 무릎과 고관절이 함께 움직이게 하세요."
+    : "";
 
   const cursor = document.getElementById("timelineCursor");
+  const progress = document.getElementById("timelineProgress");
   const duration = state.data.input_videos.wrong.duration_sec || 1;
+  const progressPercent = (frame.time_sec / duration) * 100;
+  if (progress) {
+    progress.style.width = `${progressPercent}%`;
+  }
   if (cursor) {
-    cursor.style.left = `${(frame.time_sec / duration) * 100}%`;
+    cursor.style.left = `${progressPercent}%`;
   }
 
-  const hotNames = warningIssue ? getHotJointNames(warningIssue.id) : new Set();
+  const hotNames = topIssue ? getHotJointNames(frame, topIssue.id) : new Set();
   if (state.avatar) {
-    state.avatar.wrongLandmarks =
-      state.avatar.tracks.wrong.frames[currentIndex] || frame.wrong.landmarks2d;
-    state.avatar.referenceLandmarks =
-      state.avatar.tracks.reference.frames[currentIndex] || frame.reference.landmarks2d;
+    state.avatar.wrongLandmarks = state.avatar.tracks.wrong.frames[currentIndex] || frame.wrong.landmarks2d;
+    state.avatar.referenceLandmarks = state.avatar.tracks.reference.frames[currentIndex] || frame.reference.landmarks2d;
     state.avatar.hotNames = hotNames;
     renderAvatar();
   }
@@ -1105,7 +1203,9 @@ function updateFrame(frame) {
 function showFrame(index) {
   const clamped = Math.max(0, Math.min(index, state.data.frames.length - 1));
   state.player.index = clamped;
-  elements.overlayFrame.src = getFramePath(clamped);
+  const cachedImage = state.imageCache.get(clamped);
+  elements.overlayFrame.src = cachedImage?.complete ? cachedImage.src : getFramePath(clamped);
+  preloadFramesAround(clamped + 1);
   updateFrame(state.data.frames[clamped]);
 }
 
@@ -1115,17 +1215,28 @@ function pause() {
     state.player.timerId = null;
   }
   state.player.isPlaying = false;
-  elements.playToggle.textContent = "재생";
+  elements.playToggle.textContent = "▶";
 }
 
 function play() {
+  const lastIndex = state.data.frames.length - 1;
+  if (state.session.passIndex >= state.session.totalPasses - 1 && state.player.index >= lastIndex) {
+    resetSessionProgress();
+    showFrame(0);
+  }
   if (state.player.isPlaying) return;
   state.player.isPlaying = true;
-  elements.playToggle.textContent = "일시정지";
+  elements.playToggle.textContent = "❚❚";
 
   const intervalMs = 1000 / Math.max(state.player.fps, 1);
   state.player.timerId = window.setInterval(() => {
-    if (state.player.index >= state.data.frames.length - 1) {
+    if (state.player.index >= lastIndex) {
+      if (state.session.passIndex < state.session.totalPasses - 1) {
+        state.session.passIndex += 1;
+        showFrame(0);
+        return;
+      }
+      showFrame(lastIndex);
       pause();
       return;
     }
@@ -1148,7 +1259,7 @@ function bindControls() {
 
   elements.voiceToggle.addEventListener("click", () => {
     state.voiceEnabled = !state.voiceEnabled;
-    elements.voiceToggle.textContent = state.voiceEnabled ? "음성 피드백 켬" : "음성 피드백 끔";
+    elements.voiceToggle.textContent = state.voiceEnabled ? "음성 안내 켜짐" : "음성 안내 꺼짐";
     if (!state.voiceEnabled && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       resetVoiceTracking();
@@ -1156,35 +1267,42 @@ function bindControls() {
   });
 }
 
-async function bootstrap() {
-  const response = await fetch("data/analysis.json");
-  if (!response.ok) {
-    throw new Error(`Failed to load analysis.json (${response.status})`);
+async function loadData() {
+  if (window.__WORKWITH_DATA__) {
+    return window.__WORKWITH_DATA__;
   }
+  const response = await fetch("data/session-data.json");
+  if (!response.ok) {
+    throw new Error("세션 데이터를 불러오지 못했습니다.");
+  }
+  return response.json();
+}
 
-  state.data = await response.json();
+async function bootstrap() {
+  state.data = await loadData();
   state.scoreBuckets = buildScoreBuckets(state.data.frames);
+  state.analysisBuckets = buildAnalysisBuckets(state.data.frames);
   state.player.fps = state.data.input_videos.wrong.sampled_fps || 10;
+  preloadFramesAround(0);
 
   const avatarTracks = {
     wrong: prepareAvatarTrack("wrong"),
     reference: prepareAvatarTrack("reference"),
   };
 
-  elements.averageScore.textContent = `${Math.round(state.data.overview.average_score)}`;
-  elements.repCount.textContent = `${state.data.overview.rep_count}`;
-  elements.thresholdValue.textContent = `${WARNING_SCORE_THRESHOLD}`;
-  elements.summaryText.textContent = `1초 평균 점수와 접지 안정화를 기준으로 아바타 모션을 보정했습니다.`;
-
   buildTimeline();
-  renderFindings();
   initAvatar(avatarTracks);
   bindControls();
+  resetSessionProgress();
   showFrame(0);
+  window.setTimeout(play, 280);
 }
 
 bootstrap().catch((error) => {
   console.error(error);
+  document.body.classList.add("has-load-error");
   elements.summaryText.textContent = error.message;
-  elements.coachText.textContent = "프로토타입 로드에 실패했습니다.";
+  elements.coachText.textContent = "세션 데이터를 불러오지 못했습니다.";
+  elements.medicalDetail.textContent = error.message;
+  elements.trainerDetail.textContent = error.message;
 });

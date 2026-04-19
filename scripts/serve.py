@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -16,11 +15,10 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Serve the static prototype locally.")
+    parser = argparse.ArgumentParser(description="Serve the static WorkWith demo locally.")
     parser.add_argument("--root", type=Path, default=Path("app"), help="Directory to serve.")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind.")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind.")
-    parser.add_argument("--open", action="store_true", help="Open the browser after starting.")
     return parser.parse_args()
 
 
@@ -34,9 +32,6 @@ def main() -> None:
     url = f"http://{args.host}:{args.port}"
     server = ThreadingHTTPServer((args.host, args.port), NoCacheHandler)
     print(f"Serving {root} at {url}")
-
-    if args.open:
-        webbrowser.open(url)
 
     try:
         server.serve_forever()

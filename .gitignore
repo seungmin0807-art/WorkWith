@@ -5,3 +5,5 @@
 __pycache__/
 *.pyc
 python-installer.exe
+*.log
+scripts/__pycache__/
