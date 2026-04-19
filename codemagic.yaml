@@ -1,0 +1,90 @@
+# ═══════════════════════════════════════════════════════════════
+#  Workin · Squat Coach — Codemagic 클라우드 빌드 파이프라인
+#
+#  이 파일이 있으면 Codemagic이 자동으로 읽어서 Mac VM에서 빌드합니다.
+#  사용자가 설정해야 할 환경변수 (Codemagic 웹 대시보드에서 입력):
+#    APPLE_ID               : 애플 ID 이메일 (예: yourname@icloud.com)
+#    APPLE_ID_PASSWORD      : 앱 전용 비밀번호 (appleid.apple.com에서 생성)
+#    APPLE_TEAM_ID          : 팀 ID (Codemagic이 자동 감지 가능)
+#    DEVICE_UDID            : 설치할 아이폰의 UDID (iTunes/3uTools에서 확인)
+# ═══════════════════════════════════════════════════════════════
+
+workflows:
+
+  ios-development-build:
+    name: "Workin iOS — 개발 빌드 (.ipa)"
+    max_build_duration: 60        # 분 단위, 무료 플랜 충분
+
+    environment:
+      xcode: latest               # 최신 Xcode 사용
+      node: "20"
+      vars:
+        BUNDLE_ID: "com.workin.squatcoach"
+        APP_NAME:  "Workin"
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME:    "App"
+      # ── 코드 서명 (Codemagic 대시보드에서 Apple ID 연동 후 자동 설정) ──
+      ios_signing:
+        distribution_type: development   # 무료 Apple ID로 가능
+        bundle_identifier: com.workin.squatcoach
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+    scripts:
+
+      # 1. Node 패키지 설치
+      - name: npm install
+        script: npm install
+
+      # 2. iOS 플랫폼 추가 (최초 1회) + CocoaPods 설치
+      - name: Capacitor iOS 플랫폼 준비
+        script: |
+          if [ ! -d "ios" ]; then
+            echo "▶ ios/ 폴더 없음 → cap add ios 실행"
+            npx cap add ios
+          else
+            echo "▶ ios/ 폴더 존재 → cap sync ios 실행"
+            npx cap sync ios
+          fi
+
+      # 3. 웹 에셋 동기화
+      - name: Capacitor 웹 에셋 동기화
+        script: npx cap sync ios
+
+      # 4. CocoaPods 의존성 설치
+      - name: pod install
+        script: |
+          cd ios/App
+          pod install --repo-update
+
+      # 5. 코드 서명 프로파일 적용
+      - name: 코드 서명 설정
+        script: xcode-project use-profiles
+
+      # 6. .ipa 빌드
+      - name: iOS 빌드 (.ipa 생성)
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --config Release
+
+    # ── 결과물 (빌드 성공 시 다운로드 가능) ──────────────────────
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    # ── 빌드 완료 이메일 알림 ──────────────────────────────────────
+    publishing:
+      email:
+        recipients:
+          - $APPLE_ID          # 빌드 완료 시 Apple ID로 이메일 발송
+        notify:
+          success: true
+          failure: true
