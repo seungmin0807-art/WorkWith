@@ -1,4 +1,3 @@
-# Python
 .venv/
 .tools/
 .models/
@@ -6,21 +5,3 @@
 __pycache__/
 *.pyc
 python-installer.exe
-
-# Node
-node_modules/
-npm-debug.log*
-
-# Capacitor
-# ios/ 폴더는 Codemagic이 직접 생성하므로 제외
-# (로컬 Mac 있으면 커밋해도 되지만 없으면 제외)
-ios/
-android/
-
-# Build artifacts
-dist/
-build/
-
-# OS
-.DS_Store
-Thumbs.db

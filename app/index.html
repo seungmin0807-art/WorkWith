@@ -2,139 +2,117 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Workin">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#060810">
-  <title>Workin · Squat Coach</title>
-
-  <!-- PWA manifest -->
-  <link rel="manifest" href="manifest.json">
-
-  <!-- iOS home-screen icon (Safari uses this, not manifest icons) -->
-  <link rel="apple-touch-icon" href="icons/icon-180.png">
-
-  <!-- Splash / icon fallback -->
-  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workin Home Trainer Prototype</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
   <main class="shell">
-
-    <!-- ══ Row 1 · Video Panel ══════════════════════════════ -->
-    <article class="panel video-panel">
-
-      <header class="panel-head">
-        <div class="head-meta">
+    <article class="column video-column">
+      <header class="column-head">
+        <div>
           <p class="eyebrow">Overlay Video</p>
-          <h1 class="head-title">Wrong squat overlay</h1>
+          <h1>Wrong squat overlay</h1>
         </div>
-        <div class="score-chip">
-          <span class="chip-label">Score</span>
+        <div class="score-pill">
+          <span>1s avg score</span>
           <strong id="scoreValue">--</strong>
         </div>
       </header>
 
       <div class="video-stage">
-        <img id="overlayFrame" class="frame-img" alt="Squat overlay frame">
-        <div class="cue-badge">
-          <span class="badge-label">Current cue</span>
-          <strong id="currentIssue">기준 자세 범위</strong>
+        <img id="overlayFrame" alt="Squat overlay frame">
+        <div class="video-overlay">
+          <div class="video-badge">
+            <span class="badge-label">Current cue</span>
+            <strong id="currentIssue">기준 자세 범위</strong>
+          </div>
         </div>
-        <div class="stage-vignette"></div>
       </div>
 
-      <div class="controls-bar">
-        <button id="playToggle" class="btn-fill">재생</button>
-        <button id="voiceToggle" class="btn-outline">음성 피드백 끔</button>
-        <span id="phaseLabel" class="phase-tag">Rep 1 · steady</span>
+      <div class="controls">
+        <button id="playToggle" class="action">재생</button>
+        <button id="voiceToggle" class="ghost">음성 피드백 끔</button>
+        <span id="phaseLabel" class="phase-label">Rep 1 · steady</span>
       </div>
-
     </article>
 
-    <!-- ══ Row 2 · Avatar + Quick Stats ═════════════════════ -->
-    <div class="mid-row">
-
-      <!-- Avatar -->
-      <article class="panel avatar-panel">
-        <div class="avatar-head">
+    <article class="column avatar-column">
+      <header class="column-head">
+        <div>
           <p class="eyebrow">Pose Avatar</p>
-          <p class="legend-line">
-            <span class="dot dot-white"></span>wrong
-            <span class="dot dot-cyan"></span>correct
-          </p>
+          <h2>Adult mannequin twin</h2>
         </div>
-        <div id="avatarViewport" class="avatar-viewport"></div>
-      </article>
+        <p class="legend">
+          <span class="legend-dot live"></span> wrong
+          <span class="legend-dot ref"></span> correct
+        </p>
+      </header>
 
-      <!-- Quick Stats -->
-      <article class="panel stats-panel">
-        <div class="kpi-row">
-          <div class="kpi">
-            <span>Avg</span>
+      <div id="avatarViewport" class="avatar-viewport"></div>
+    </article>
+
+    <article class="column info-column">
+      <section class="info-block overview-block">
+        <div class="info-head">
+          <span class="panel-kicker">Overview</span>
+          <h3>Session summary</h3>
+        </div>
+        <div class="overview-metrics">
+          <div>
+            <span>Average</span>
             <strong id="averageScore">--</strong>
           </div>
-          <div class="kpi">
+          <div>
             <span>Reps</span>
             <strong id="repCount">--</strong>
           </div>
-          <div class="kpi kpi-warn">
-            <span>Warn</span>
+          <div>
+            <span>Warn below</span>
             <strong id="thresholdValue">--</strong>
           </div>
         </div>
+        <p id="summaryText" class="summary-copy">분석 데이터를 불러오는 중입니다.</p>
+      </section>
 
-        <!-- summary text: hidden on mobile to save space -->
-        <p id="summaryText" class="summary-text">분석 데이터를 불러오는 중입니다.</p>
-
-        <div class="coach-section">
-          <p class="eyebrow coach-eyebrow">Live coaching</p>
-          <p id="coachText" class="coach-text">분석 결과를 준비 중입니다.</p>
+      <section class="info-block coach-block">
+        <div class="info-head">
+          <span class="panel-kicker">Live coaching</span>
+          <h3>Current note</h3>
         </div>
-      </article>
+        <p id="coachText" class="coach-copy">분석 결과를 준비 중입니다.</p>
+      </section>
 
-    </div>
+      <section class="info-block metrics-block">
+        <div class="info-head">
+          <span class="panel-kicker">Comparison</span>
+          <h3>Current metrics</h3>
+        </div>
+        <div id="metricGrid" class="metric-grid"></div>
+      </section>
 
-    <!-- ══ Row 3 · Metrics + Timeline ═══════════════════════ -->
-    <div class="bottom-row">
+      <section class="info-block findings-block">
+        <div class="info-head">
+          <span class="panel-kicker">Top findings</span>
+          <h3>Most common drifts</h3>
+        </div>
+        <div id="findingList" class="finding-list"></div>
+      </section>
 
-      <div class="panel metrics-panel">
-        <p class="eyebrow metrics-label">Comparison</p>
-        <div id="metricGrid" class="metric-scroll"></div>
-      </div>
-
-      <div class="panel timeline-panel">
+      <section class="info-block timeline-block">
+        <div class="info-head">
+          <span class="panel-kicker">Timeline</span>
+          <h3>Issue segments</h3>
+        </div>
         <div id="timeline" class="timeline" aria-label="Issue timeline"></div>
-      </div>
-
-    </div>
-
+      </section>
+    </article>
   </main>
 
-  <!-- Hidden elements kept in DOM for JS compatibility -->
-  <div hidden aria-hidden="true">
-    <div id="findingList"></div>
-  </div>
-
   <script src="app.js?v=20260413-5"></script>
-
-  <!-- Register Service Worker for PWA / offline support -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker
-          .register("/sw.js")
-          .catch((err) => console.warn("SW registration failed:", err));
-      });
-    }
-  </script>
 </body>
 </html>

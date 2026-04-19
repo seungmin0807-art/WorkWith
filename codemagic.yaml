@@ -6,7 +6,7 @@
 #    APPLE_ID               : 애플 ID 이메일 (예: yourname@icloud.com)
 #    APPLE_ID_PASSWORD      : 앱 전용 비밀번호 (appleid.apple.com에서 생성)
 #    APPLE_TEAM_ID          : 팀 ID (Codemagic이 자동 감지 가능)
-#    DEVICE_UDID            : 설치할 아이폰의 UDID (iTunes/3uTools에서 확인)
+#    DEVICE_UDID            : iPad UDID (iTunes 연결 후 일련번호 클릭 → UDID 확인)
 # ═══════════════════════════════════════════════════════════════
 
 workflows:
@@ -23,6 +23,7 @@ workflows:
         APP_NAME:  "Workin"
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME:    "App"
+        DEVICE_UDID: "00008110-0018250A0EB9401E"   # iPhone 14
       # ── 코드 서명 (Codemagic 대시보드에서 Apple ID 연동 후 자동 설정) ──
       ios_signing:
         distribution_type: development   # 무료 Apple ID로 가능
@@ -84,7 +85,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - $APPLE_ID          # 빌드 완료 시 Apple ID로 이메일 발송
+          - seungmin0807@snu.ac.kr
         notify:
           success: true
           failure: true
