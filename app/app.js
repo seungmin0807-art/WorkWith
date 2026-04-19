@@ -115,6 +115,11 @@ const elements = {
   metricGrid: document.getElementById("metricGrid"),
   reportSection: document.getElementById("reportSection"),
   finalMetricGrid: document.getElementById("finalMetricGrid"),
+  reportNoteGrid: document.getElementById("reportNoteGrid"),
+  reportFindingTitle: document.getElementById("reportFindingTitle"),
+  reportFindingCopy: document.getElementById("reportFindingCopy"),
+  reportGuideTitle: document.getElementById("reportGuideTitle"),
+  reportGuideCopy: document.getElementById("reportGuideCopy"),
   reportStatus: document.getElementById("reportStatus"),
   expertGrid: document.getElementById("expertGrid"),
   medicalStatus: document.getElementById("medicalStatus"),
@@ -705,33 +710,6 @@ function drawBackdrop(ctx, width, height) {
   background.addColorStop(1, "rgba(4, 7, 11, 1)");
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = "rgba(87, 206, 255, 0.08)";
-  ctx.lineWidth = 1;
-  const horizonY = height * 0.28;
-  const floorY = height * 0.86;
-  for (let i = 0; i < 7; i += 1) {
-    const t = i / 6;
-    const y = horizonY + (floorY - horizonY) * (t * t);
-    ctx.beginPath();
-    ctx.moveTo(width * (0.18 - t * 0.08), y);
-    ctx.lineTo(width * (0.82 + t * 0.08), y);
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 7; i += 1) {
-    const t = i / 6;
-    const xLeft = width * (0.2 + t * 0.1);
-    const xRight = width * (0.8 - t * 0.1);
-    ctx.beginPath();
-    ctx.moveTo(width * 0.5, horizonY);
-    ctx.lineTo(xLeft, floorY);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(width * 0.5, horizonY);
-    ctx.lineTo(xRight, floorY);
-    ctx.stroke();
-  }
 }
 
 function drawCapsule(ctx, start, end, width, palette, isHot) {
@@ -997,7 +975,7 @@ function getReportMatchScore() {
 }
 
 function getCompactFinalMetrics() {
-  const preferredIds = ["match", "knee_load", "heel_contact"];
+  const preferredIds = ["match", "knee_load", "heel_contact", "hip_hinge", "stability"];
   const reportMetrics = state.data.report.final_scores || [];
   return preferredIds
     .map((id) => reportMetrics.find((metric) => metric.id === id))
@@ -1035,6 +1013,7 @@ function setAnalysisMode(reportReady) {
   elements.sessionStateSection.hidden = true;
   elements.liveMetricsSection.hidden = reportReady;
   elements.summaryText.hidden = reportReady;
+  elements.reportNoteGrid.hidden = !reportReady;
   elements.liveMetricsLabel.textContent = reportReady ? "종합 평가 수치" : "실시간 수치";
   elements.reportSection.classList.toggle("compact-pending", !reportReady);
   elements.reportSection.classList.toggle("report-ready", reportReady);
@@ -1144,6 +1123,8 @@ function updateFrame(frame) {
     .slice(0, 2)
     .map((item) => item.label)
     .join(" · ");
+  const topFinding = overview.top_findings?.[0];
+  const guideLine = report.next_session?.[0] || "";
 
   setAnalysisMode(reportReady);
 
@@ -1169,6 +1150,10 @@ function updateFrame(frame) {
 
   elements.reportStatus.textContent = reportReady ? "평가 완료" : "분석 중...";
   elements.reportStatus.classList.toggle("ready", reportReady);
+  elements.reportFindingTitle.textContent = reportReady ? reportFocus || "핵심 이슈 정리" : "분석 중...";
+  elements.reportFindingCopy.textContent = reportReady ? report.summary : "";
+  elements.reportGuideTitle.textContent = reportReady ? (topFinding?.label || "다음 세트 가이드") : "분석 중...";
+  elements.reportGuideCopy.textContent = reportReady ? guideLine : "";
   elements.medicalStatus.textContent = reportReady ? report.medical_status : "분석 중...";
   elements.medicalDetail.textContent = reportReady
     ? "무릎이 먼저 전진하고 뒤꿈치 지지가 약해 관절 전면 부담이 커질 수 있습니다. 깊이를 조금 줄이고 안정성을 먼저 확보하세요."

@@ -36,7 +36,7 @@
       <div class="header-side">
         <div class="session-pill">
           <span>Exercise</span>
-          <strong>Barbell Back Squat</strong>
+          <strong>스쿼트</strong>
         </div>
       </div>
     </header>
@@ -66,7 +66,7 @@
               <div class="legend-line">
                 <span class="legend-item"><i class="dot dot-blue"></i>모범 동작</span>
                 <span class="legend-item"><i class="dot dot-white"></i>사용자</span>
-                <span class="legend-item"><i class="dot dot-red"></i>위험</span>
+                <span class="legend-item"><i class="dot dot-red"></i>정상 범위 이탈</span>
               </div>
             </div>
             <div id="avatarViewport" class="avatar-viewport"></div>
@@ -133,6 +133,18 @@
                 <span id="reportStatus" class="status-pill">분석 중...</span>
               </div>
               <div id="finalMetricGrid" class="metric-grid final-metric-grid"></div>
+              <div id="reportNoteGrid" class="report-note-grid" hidden>
+                <article class="report-note-card">
+                  <span class="expert-role">핵심 이슈</span>
+                  <strong id="reportFindingTitle">분석 중...</strong>
+                  <p id="reportFindingCopy" class="detail-copy"></p>
+                </article>
+                <article class="report-note-card">
+                  <span class="expert-role">다음 세트 가이드</span>
+                  <strong id="reportGuideTitle">분석 중...</strong>
+                  <p id="reportGuideCopy" class="detail-copy"></p>
+                </article>
+              </div>
               <div id="expertGrid" class="expert-grid">
                 <article class="expert-card">
                   <span class="expert-role">전문의 관점</span>
