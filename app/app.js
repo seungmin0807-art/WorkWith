@@ -1200,7 +1200,7 @@ function pause() {
     state.player.timerId = null;
   }
   state.player.isPlaying = false;
-  elements.playToggle.textContent = "▶";
+  elements.playToggle.textContent = "재생";
 }
 
 function play() {
@@ -1211,7 +1211,7 @@ function play() {
   }
   if (state.player.isPlaying) return;
   state.player.isPlaying = true;
-  elements.playToggle.textContent = "❚❚";
+  elements.playToggle.textContent = "일시정지";
 
   const intervalMs = 1000 / Math.max(state.player.fps, 1);
   state.player.timerId = window.setInterval(() => {
