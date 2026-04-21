@@ -15,6 +15,7 @@ struct WorkWithWebView: UIViewRepresentable {
     configuration.allowsInlineMediaPlayback = true
     configuration.mediaTypesRequiringUserActionForPlayback = []
     configuration.defaultWebpagePreferences.preferredContentMode = .mobile
+    configuration.userContentController.add(context.coordinator, name: "workwithOrientation")
 
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
@@ -38,7 +39,7 @@ struct WorkWithWebView: UIViewRepresentable {
     webView.loadFileURL(entryURL, allowingReadAccessTo: readAccessURL)
   }
 
-  final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+  final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     func webView(
       _ webView: WKWebView,
       decidePolicyFor navigationAction: WKNavigationAction,
@@ -62,6 +63,24 @@ struct WorkWithWebView: UIViewRepresentable {
       }
 
       decisionHandler(.allow)
+    }
+
+    func userContentController(
+      _ userContentController: WKUserContentController,
+      didReceive message: WKScriptMessage
+    ) {
+      guard message.name == "workwithOrientation" else {
+        return
+      }
+
+      switch message.body as? String {
+      case "landscape":
+        AppOrientationController.request(.landscape)
+      case "portrait":
+        AppOrientationController.request(.portrait)
+      default:
+        break
+      }
     }
 
     @available(iOS 15.0, *)

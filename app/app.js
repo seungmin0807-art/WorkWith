@@ -1165,8 +1165,37 @@ async function startCameraKeepAlive() {
   return state.camera.startPromise;
 }
 
+function postNativeOrientation(mode) {
+  try {
+    window.webkit?.messageHandlers?.workwithOrientation?.postMessage(mode);
+  } catch (error) {
+    console.warn("Native orientation bridge unavailable.", error);
+  }
+}
+
+function lockBrowserOrientation(mode) {
+  const orientation = mode === "landscape" ? "landscape" : "portrait-primary";
+  const lock = window.screen?.orientation?.lock;
+  if (typeof lock !== "function") {
+    return;
+  }
+
+  const lockPromise = lock.call(window.screen.orientation, orientation);
+  if (lockPromise && typeof lockPromise.catch === "function") {
+    lockPromise.catch(() => {});
+  }
+}
+
+function requestAppOrientation(mode) {
+  const normalizedMode = mode === "landscape" ? "landscape" : "portrait";
+  document.documentElement.dataset.orientationTarget = normalizedMode;
+  postNativeOrientation(normalizedMode);
+  lockBrowserOrientation(normalizedMode);
+}
+
 function showLaunchScreen(screenName) {
   stopCameraKeepAlive();
+  requestAppOrientation("portrait");
 
   const screens = {
     home: elements.homeDashboard,
@@ -2480,6 +2509,7 @@ function startAnalysisSession() {
   state.hasSessionStarted = true;
   preloadGeneratedVoiceClips();
   primeSpeechSynthesis(true);
+  requestAppOrientation("landscape");
 
   dismissLaunchSplash();
 
