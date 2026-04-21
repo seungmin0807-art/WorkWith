@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -420,12 +420,12 @@
   <script src="data/session-data.js?v=20260421-retarget1"></script>
   <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
   <script src="tuning.js?v=20260422-camera1"></script>
-  <script src="avatar-scene.js?v=20260421-neck1"></script>
+  <script src="avatar-scene.js?v=20260422-filefetch1"></script>
   <script src="app.js?v=20260422-counts1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-fullscreen2").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-filefetch1").catch(() => {});
       });
     }
   </script>

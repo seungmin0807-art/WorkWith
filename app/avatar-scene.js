@@ -391,6 +391,7 @@
     }
 
     async init() {
+      this.installFileProtocolFetchPatch();
       this.createRenderer();
       this.createWorld();
       if (DEBUG_SKELETON) {
@@ -408,6 +409,32 @@
       } else {
         this.setMessage("아바타 모션 준비 실패", "모델 또는 모션 JSON을 확인해주세요.");
       }
+    }
+
+    installFileProtocolFetchPatch() {
+      if (
+        typeof window === "undefined" ||
+        window.location?.protocol !== "file:" ||
+        window.__WORKWITH_FILE_FETCH_PATCHED__ ||
+        typeof window.fetch !== "function" ||
+        typeof window.Response !== "function"
+      ) {
+        return;
+      }
+
+      const originalFetch = window.fetch.bind(window);
+      window.__WORKWITH_FILE_FETCH_PATCHED__ = true;
+      window.fetch = async (...args) => {
+        const response = await originalFetch(...args);
+        if (!response.ok && response.status === 0) {
+          return new Response(await response.blob(), {
+            status: 200,
+            statusText: "OK",
+            headers: response.headers,
+          });
+        }
+        return response;
+      };
     }
 
     createRenderer() {
@@ -485,9 +512,38 @@
     }
 
     async fetchText(url) {
-      const response = await fetch(this.withCacheBust(url), { cache: "no-store" });
-      if (!response.ok) throw new Error(`Could not load BVH avatar motion: ${url}`);
-      return response.text();
+      const fullUrl = this.withCacheBust(url);
+      try {
+        const response = await fetch(fullUrl, { cache: "no-store" });
+        if (!response.ok && response.status !== 0) {
+          throw new Error(`Could not load BVH avatar motion: ${url}`);
+        }
+        return response.text();
+      } catch (error) {
+        if (window.location?.protocol === "file:") {
+          return this.fetchTextWithXhr(fullUrl, url);
+        }
+        throw error;
+      }
+    }
+
+    fetchTextWithXhr(fullUrl, sourceUrl) {
+      return new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("GET", fullUrl, true);
+        if (typeof request.overrideMimeType === "function") {
+          request.overrideMimeType("text/plain");
+        }
+        request.onload = () => {
+          if ((request.status >= 200 && request.status < 300) || request.status === 0) {
+            resolve(request.responseText);
+            return;
+          }
+          reject(new Error(`Could not load BVH avatar motion: ${sourceUrl}`));
+        };
+        request.onerror = () => reject(new Error(`Could not load BVH avatar motion: ${sourceUrl}`));
+        request.send();
+      });
     }
 
     parseBvh(text, source) {
@@ -646,6 +702,7 @@
 
     withCacheBust(url) {
       if (!url || url.startsWith("data:") || url.startsWith("blob:")) return url;
+      if (window.location?.protocol === "file:") return url;
       const separator = url.includes("?") ? "&" : "?";
       return `${url}${separator}v=${ASSET_VERSION}`;
     }
