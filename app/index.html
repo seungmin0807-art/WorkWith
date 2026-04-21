@@ -51,7 +51,7 @@
           <span>이번 주</span>
         </div>
         <div class="count-list">
-          <span>바벨 스쿼트 <strong>42회</strong></span>
+          <span>바벨 스쿼트 <strong id="weeklySquatCount">42회</strong></span>
           <span>데드리프트 <strong>18회</strong></span>
           <span>런지 <strong>24회</strong></span>
           <span>프레스 <strong>16회</strong></span>
@@ -421,11 +421,11 @@
   <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
   <script src="tuning.js?v=20260422-camera1"></script>
   <script src="avatar-scene.js?v=20260421-neck1"></script>
-  <script src="app.js?v=20260422-fullscreen1"></script>
+  <script src="app.js?v=20260422-counts1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-fullscreen1").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-counts1").catch(() => {});
       });
     }
   </script>

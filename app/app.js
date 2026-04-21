@@ -12,7 +12,14 @@ const USER_VIDEO_DRIFT_TOLERANCE_SEC = 0.12;
 const USER_FALLBACK_DURATION_SEC = 14;
 const ATTENDANCE_STORAGE_KEY = "workwith-attendance-v1";
 const BODY_PROFILE_STORAGE_KEY = "workwith-body-profile-v1";
+const EXERCISE_COUNTS_STORAGE_KEY = "workwith-exercise-counts-v1";
 const DEFAULT_STREAK_DAYS = 6;
+const DEFAULT_WEEKLY_EXERCISE_COUNTS = Object.freeze({
+  squat: 42,
+  deadlift: 18,
+  lunge: 24,
+  press: 16,
+});
 const DEFAULT_BODY_PROFILE = Object.freeze({
   height: 176.3,
   weight: 101.2,
@@ -158,6 +165,7 @@ const state = {
     streakDays: DEFAULT_STREAK_DAYS,
     lastCompletedDate: null,
   },
+  exerciseCounts: { ...DEFAULT_WEEKLY_EXERCISE_COUNTS },
   bodyProfile: { ...DEFAULT_BODY_PROFILE },
   bodyProfileEditing: false,
   imageCache: new Map(),
@@ -228,6 +236,7 @@ const elements = {
   squatStart: document.getElementById("squatStart"),
   exerciseCards: document.querySelectorAll(".exercise-card[data-exercise-name]"),
   streakCount: document.getElementById("streakCount"),
+  weeklySquatCount: document.getElementById("weeklySquatCount"),
   bodyEstimateCard: document.querySelector(".body-estimate-card"),
   bodyEstimateEdit: document.getElementById("bodyEstimateEdit"),
   bodyHeightValue: document.getElementById("bodyHeightValue"),
@@ -365,6 +374,57 @@ function saveAttendanceState() {
     window.localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(state.attendance));
   } catch (error) {
     console.warn("Unable to save attendance state.", error);
+  }
+}
+
+function normalizeExerciseCount(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return Math.round(parsed);
+}
+
+function loadExerciseCountState() {
+  const fallback = { ...DEFAULT_WEEKLY_EXERCISE_COUNTS };
+  if (typeof window === "undefined" || !window.localStorage) {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(EXERCISE_COUNTS_STORAGE_KEY);
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      squat: normalizeExerciseCount(parsed?.squat, fallback.squat),
+      deadlift: normalizeExerciseCount(parsed?.deadlift, fallback.deadlift),
+      lunge: normalizeExerciseCount(parsed?.lunge, fallback.lunge),
+      press: normalizeExerciseCount(parsed?.press, fallback.press),
+    };
+  } catch (error) {
+    console.warn("Unable to load exercise count state.", error);
+    return fallback;
+  }
+}
+
+function saveExerciseCountState() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(EXERCISE_COUNTS_STORAGE_KEY, JSON.stringify(state.exerciseCounts));
+  } catch (error) {
+    console.warn("Unable to save exercise count state.", error);
+  }
+}
+
+function syncExerciseCountUi() {
+  if (elements.weeklySquatCount) {
+    elements.weeklySquatCount.textContent = `${state.exerciseCounts.squat}회`;
   }
 }
 
@@ -518,8 +578,11 @@ function ensureAttendanceCheer() {
 function markWorkoutCompletedToday() {
   state.attendance.streakDays += 1;
   state.attendance.lastCompletedDate = getDeviceLocalDateKey();
+  state.exerciseCounts.squat += 7;
   saveAttendanceState();
+  saveExerciseCountState();
   syncAttendanceUi();
+  syncExerciseCountUi();
   return true;
 }
 
@@ -2658,9 +2721,12 @@ async function bootstrap() {
   setStandaloneUiClass();
   state.data = await loadData();
   state.attendance = loadAttendanceState();
+  state.exerciseCounts = loadExerciseCountState();
   state.bodyProfile = loadBodyProfileState();
   saveAttendanceState();
+  saveExerciseCountState();
   syncAttendanceUi();
+  syncExerciseCountUi();
   syncBodyProfileUi();
   setBodyProfileEditing(false);
   await loadUserOverlayData().catch((error) => {
