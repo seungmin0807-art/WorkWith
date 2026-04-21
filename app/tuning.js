@@ -72,6 +72,15 @@ window.WORKWITH_TUNING = {
       armRootOffset: 0.026,
     },
 
+    head: {
+      // Rotate only the head placement, not the whole body.
+      yawOffsetY: Math.PI,
+    },
+
+    neck: {
+      thicknessScaleXZ: 1.18,
+    },
+
     // Widen the stance by rotating leg/foot directions, not by moving toe endpoints.
     // This preserves bone lengths so the feet do not stretch.
     stance: {
@@ -86,6 +95,8 @@ window.WORKWITH_TUNING = {
       lockToGround: true,
       // Keep foot world rotations fixed while the rest of the leg follows the BVH motion.
       freezeRotation: true,
+      // The GLB foot rest direction is reversed after world-freezing, so flip only the frozen foot orientation.
+      freezeYawOffsetY: 3.14159,
       // BVH toe landmarks can tilt upward while standing; keep foot bones close to the floor plane.
       keepFlat: true,
       verticalInfluence: 0.0,

@@ -4,124 +4,260 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="WorkWith">
-  <meta name="theme-color" content="#0a0f16">
-  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#f4f7fb">
   <title>WorkWith</title>
   <script>
     (function () {
       if (location.protocol !== "file:") return;
       const previewUrl = "http://127.0.0.1:8000/";
-      const target = previewUrl + (location.hash || "");
-      location.replace(target);
+      location.replace(previewUrl + (location.hash || ""));
     })();
   </script>
   <script>
     (function () {
-      if (!("serviceWorker" in navigator)) return;
-      navigator.serviceWorker.getRegistrations()
-        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
-        .catch(() => {});
-      if ("caches" in window) {
-        caches.keys()
-          .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-          .catch(() => {});
-      }
+      const isStandalone =
+        window.navigator.standalone === true ||
+        window.matchMedia("(display-mode: standalone)").matches;
+      document.documentElement.classList.toggle("is-standalone", isStandalone);
     })();
   </script>
-  <link rel="manifest" href="manifest.json?v=20260420-polish1">
-  <link rel="apple-touch-icon" href="icons/icon.png?v=20260420-polish1">
-  <link rel="icon" type="image/png" sizes="1024x1024" href="icons/icon.png?v=20260420-polish1">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260421-layoutsync7">
+  <link rel="manifest" href="manifest.json?v=20260421-ios1">
+  <link rel="apple-touch-icon" href="icons/icon.png?v=20260421-logo1">
+  <link rel="icon" type="image/png" sizes="1024x1024" href="icons/icon.png?v=20260421-logo1">
+  <link rel="stylesheet" href="styles.css?v=20260421-body2">
 </head>
 <body>
   <main id="launchExperience" class="launch-experience" aria-label="WorkWith 시작">
-    <section id="logoSplash" class="logo-splash" aria-live="polite">
-      <div class="logo-mark" aria-hidden="true"><span></span></div>
-      <p>AI 자세 코칭</p>
-      <h1>WorkWith</h1>
+    <section id="logoSplash" class="logo-splash" aria-label="WorkWith 로고 스플래시">
+      <img class="logo-splash-image" src="icons/icon-splash.png?v=20260421-splash-logo1" alt="WorkWith">
     </section>
 
-    <section id="exerciseSelect" class="exercise-select" aria-label="운동 선택">
+    <section id="homeDashboard" class="launch-screen home-dashboard is-active" aria-label="홈 대시보드">
+      <div class="home-hero">
+        <div class="home-brand">
+          <img class="home-logo" src="icons/icon-home.png?v=20260421-home-logo1" alt="WorkWith">
+        </div>
+        <h1>오늘도 힘차게!<br>WorkWith!</h1>
+      </div>
+
+      <div class="home-stat-grid" aria-label="운동 요약">
+        <article class="home-stat-card streak-card">
+          <span>연속 운동</span>
+          <strong id="streakCount">6일</strong>
+          <em>꾸준함이 쌓이고 있어요</em>
+        </article>
+        <article class="home-stat-card">
+          <span>내 몸상태</span>
+          <strong>좋음</strong>
+          <em>무릎 부담 낮음 · 하체 준비 완료</em>
+        </article>
+      </div>
+
+      <section class="exercise-counts" aria-label="운동별 누적 횟수">
+        <div class="section-head">
+          <p class="section-label">운동별 누적 횟수</p>
+          <span>이번 주</span>
+        </div>
+        <div class="count-list">
+          <span>바벨 스쿼트 <strong>42회</strong></span>
+          <span>데드리프트 <strong>18회</strong></span>
+          <span>런지 <strong>24회</strong></span>
+          <span>프레스 <strong>16회</strong></span>
+        </div>
+      </section>
+
+      <section class="body-estimate-card" aria-label="현재 내 몸상태 추정">
+        <div class="section-head body-estimate-head">
+          <div>
+            <p class="section-label">현재 내 몸상태 추정</p>
+            <h3>힘과 밸런스가 함께 올라온 상태</h3>
+          </div>
+          <span>오늘 기준</span>
+        </div>
+        <div class="body-estimate-layout">
+          <div class="body-estimate-figure" aria-hidden="true">
+            <svg viewBox="0 0 260 360" role="img" aria-label="몸 체형 아바타">
+              <defs>
+                <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ffffff" />
+                  <stop offset="58%" stop-color="#eef3ff" />
+                  <stop offset="100%" stop-color="#cfdcff" />
+                </linearGradient>
+                <linearGradient id="limbGrad" x1="10%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#fbfdff" />
+                  <stop offset="62%" stop-color="#e6eeff" />
+                  <stop offset="100%" stop-color="#bccfff" />
+                </linearGradient>
+                <linearGradient id="shortsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#15305f" />
+                  <stop offset="100%" stop-color="#0b1837" />
+                </linearGradient>
+                <radialGradient id="glowGrad" cx="50%" cy="24%" r="82%">
+                  <stop offset="0%" stop-color="rgba(143,181,255,0.34)" />
+                  <stop offset="100%" stop-color="rgba(143,181,255,0)" />
+                </radialGradient>
+              </defs>
+
+              <ellipse cx="130" cy="302" rx="74" ry="16" fill="rgba(7, 14, 34, 0.44)" />
+              <ellipse cx="130" cy="136" rx="102" ry="122" fill="url(#glowGrad)" />
+
+              <circle cx="77" cy="103" r="15" fill="url(#bodyGrad)" />
+              <circle cx="183" cy="103" r="15" fill="url(#bodyGrad)" />
+
+              <rect x="52" y="86" width="28" height="88" rx="14" fill="url(#limbGrad)" transform="rotate(-58 66 130)" />
+              <rect x="18" y="38" width="24" height="84" rx="12" fill="url(#limbGrad)" transform="rotate(-108 30 80)" />
+              <circle cx="38" cy="34" r="13" fill="url(#bodyGrad)" />
+
+              <rect x="180" y="86" width="28" height="88" rx="14" fill="url(#limbGrad)" transform="rotate(58 194 130)" />
+              <rect x="218" y="38" width="24" height="84" rx="12" fill="url(#limbGrad)" transform="rotate(108 230 80)" />
+              <circle cx="222" cy="34" r="13" fill="url(#bodyGrad)" />
+
+              <ellipse cx="130" cy="58" rx="28" ry="35" fill="url(#bodyGrad)" />
+              <rect x="117" y="86" width="26" height="22" rx="12" fill="url(#bodyGrad)" />
+
+              <path d="M84 109 Q130 88 176 109 L191 176 Q168 205 130 211 Q92 205 69 176 Z" fill="url(#bodyGrad)" />
+              <path d="M95 124 Q130 110 165 124" stroke="#d7e4ff" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.85" />
+              <path d="M106 153 Q130 145 154 153" stroke="#d7e4ff" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.7" />
+              <path d="M116 174 Q130 170 144 174" stroke="#d7e4ff" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.58" />
+
+              <path d="M94 205 Q130 196 166 205 L156 238 Q130 248 104 238 Z" fill="url(#shortsGrad)" />
+
+              <rect x="96" y="226" width="33" height="99" rx="16" fill="url(#limbGrad)" transform="rotate(8 112 276)" />
+              <rect x="129" y="226" width="33" height="99" rx="16" fill="url(#limbGrad)" transform="rotate(-8 146 276)" />
+
+              <rect x="82" y="286" width="28" height="78" rx="14" fill="url(#limbGrad)" transform="rotate(6 96 325)" />
+              <rect x="150" y="286" width="28" height="78" rx="14" fill="url(#limbGrad)" transform="rotate(-6 164 325)" />
+
+              <ellipse cx="88" cy="334" rx="20" ry="10" fill="url(#bodyGrad)" transform="rotate(-18 88 334)" />
+              <ellipse cx="172" cy="334" rx="20" ry="10" fill="url(#bodyGrad)" transform="rotate(18 172 334)" />
+            </svg>
+            <img class="body-estimate-avatar-img" src="media/exercises/05-bodybuilding-front-pose.png?v=20260422-exercise-assets" alt="">
+          </div>
+          <div class="body-estimate-stats">
+            <article class="body-estimate-stat">
+              <span>키</span>
+              <strong>176.3cm</strong>
+            </article>
+            <article class="body-estimate-stat">
+              <span>몸무게</span>
+              <strong>101.2kg</strong>
+            </article>
+            <article class="body-estimate-stat">
+              <span>골격근량</span>
+              <strong>47kg</strong>
+            </article>
+            <article class="body-estimate-stat">
+              <span>체지방</span>
+              <strong>18%</strong>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <div class="bottom-action-bar">
+        <button id="startWorkout" class="primary-action" type="button">운동 시작</button>
+      </div>
+    </section>
+
+    <section id="exerciseSelect" class="launch-screen exercise-select" hidden aria-label="운동 선택">
       <div class="select-copy">
-        <p class="eyebrow">오늘의 운동</p>
-        <h2>오늘 할 운동을 선택하세요</h2>
+        <div>
+          <p class="eyebrow">오늘의 운동</p>
+          <h2>어떤 운동으로<br>시작할까요?</h2>
+        </div>
+        <p class="helper-copy">트레이너 수업을 먼저 보고 분석 화면으로 이동합니다.</p>
       </div>
 
       <div class="exercise-grid">
-        <button id="squatStart" class="exercise-card squat-card" type="button" aria-label="스쿼트 시작" data-exercise-name="스쿼트">
+        <button id="squatStart" class="exercise-card squat-card" type="button" aria-label="바벨 스쿼트 시작" data-exercise-name="바벨 스쿼트">
           <span class="exercise-media" aria-hidden="true">
-            <img class="exercise-art exercise-avatar-img" src="media/exercises/squat-avatar.png?v=20260421-retarget1" alt="" />
+            <img class="exercise-art exercise-avatar-img" src="media/exercises/01-barbell-back-squat.png?v=20260422-exercise-assets" alt="">
           </span>
           <span class="exercise-info">
             <span class="exercise-state">바로 시작</span>
-            <strong>스쿼트</strong>
-            <em>실시간 자세 분석</em>
+            <strong>바벨 스쿼트</strong>
+            <em>하체 안정감과 깊이</em>
           </span>
         </button>
 
         <button class="exercise-card deadlift-card" type="button" aria-label="데드리프트 시작" data-exercise-name="데드리프트">
           <span class="exercise-media" aria-hidden="true">
-            <img class="exercise-art exercise-avatar-img" src="media/exercises/deadlift-avatar.png?v=20260421-retarget1" alt="" />
+            <img class="exercise-art exercise-avatar-img" src="media/exercises/02-conventional-deadlift.png?v=20260422-exercise-assets" alt="">
           </span>
           <span class="exercise-info">
             <span class="exercise-state">바로 시작</span>
             <strong>데드리프트</strong>
-            <em>실시간 자세 분석</em>
+            <em>힙힌지와 등 라인</em>
           </span>
         </button>
 
         <button class="exercise-card lunge-card" type="button" aria-label="런지 시작" data-exercise-name="런지">
           <span class="exercise-media" aria-hidden="true">
-            <img class="exercise-art exercise-avatar-img" src="media/exercises/lunge-avatar.png?v=20260421-retarget1" alt="" />
+            <img class="exercise-art exercise-avatar-img" src="media/exercises/03-forward-lunge.png?v=20260422-exercise-assets" alt="">
           </span>
           <span class="exercise-info">
             <span class="exercise-state">바로 시작</span>
             <strong>런지</strong>
-            <em>실시간 자세 분석</em>
+            <em>좌우 밸런스</em>
           </span>
         </button>
 
         <button class="exercise-card press-card" type="button" aria-label="프레스 시작" data-exercise-name="프레스">
           <span class="exercise-media" aria-hidden="true">
-            <img class="exercise-art exercise-avatar-img" src="media/exercises/press-avatar.png?v=20260421-retarget1" alt="" />
+            <img class="exercise-art exercise-avatar-img" src="media/exercises/04-overhead-press.png?v=20260422-exercise-assets" alt="">
           </span>
           <span class="exercise-info">
             <span class="exercise-state">바로 시작</span>
             <strong>프레스</strong>
-            <em>실시간 자세 분석</em>
+            <em>어깨 가동성과 코어</em>
           </span>
         </button>
       </div>
     </section>
 
-    <section id="demoView" class="demo-view" hidden aria-label="실제 트레이너의 수업">
+    <section id="demoView" class="launch-screen demo-view" hidden aria-label="트레이너의 수업">
       <div class="demo-copy">
-        <p class="eyebrow">실제 트레이너의 수업</p>
-        <h2><span id="demoExerciseName">스쿼트</span> 수업 미리 보기</h2>
+        <div>
+          <p class="eyebrow">트레이너의 수업</p>
+          <h2><span id="demoExerciseName">바벨 스쿼트</span> 수업을 먼저 볼게요.</h2>
+        </div>
       </div>
-      <video id="correctDemoVideo" class="demo-video" src="media/correct.mp4?v=20260420-reference" preload="metadata" playsinline controls></video>
-      <button id="skipDemo" class="demo-skip" type="button">운동 시작</button>
+      <div class="demo-video-shell">
+        <video id="correctDemoVideo" class="demo-video" src="media/class.mp4?v=20260421-class1" preload="metadata" playsinline controls></video>
+      </div>
+      <div class="bottom-action-bar inline-action-bar">
+        <button id="skipDemo" class="primary-action" type="button">운동 시작</button>
+      </div>
+    </section>
+
+    <section id="attendanceView" class="launch-screen attendance-view" hidden aria-label="출석체크">
+      <div class="attendance-card">
+        <img class="attendance-logo" src="icons/icon-home.png?v=20260421-home-logo1" alt="WorkWith">
+        <p class="eyebrow">출석체크 완료</p>
+        <h2 id="attendanceHeadline">7일 연속 꾸준한 운동에 성공하셨어요!</h2>
+        <button id="attendanceHome" class="primary-action" type="button">홈으로 돌아가기</button>
+      </div>
     </section>
   </main>
 
   <div id="sessionApp" class="app-shell session-app" hidden>
     <header class="app-header">
       <div class="brand-block">
-        <p class="eyebrow">AI 자세 코칭</p>
-        <h1>WorkWith</h1>
+        <img class="header-logo" src="icons/icon-home.png?v=20260421-home-logo1" alt="">
+        <div>
+          <p class="eyebrow">AI 자세 코칭</p>
+          <h1>WorkWith</h1>
+        </div>
       </div>
 
       <div class="header-side">
         <div class="session-pill">
           <span>운동</span>
-          <strong id="selectedExerciseName">스쿼트</strong>
+          <strong id="selectedExerciseName">바벨 스쿼트</strong>
         </div>
       </div>
     </header>
@@ -130,39 +266,36 @@
       <section class="view active" id="sessionView" data-view="session">
         <div class="session-layout">
           <article class="panel video-panel">
-            <div class="panel-head">
-              <div>
-                <p class="eyebrow">사용자 화면</p>
-                <h2>user.mp4 + 골격 오버레이</h2>
-              </div>
-              <div class="panel-note">MediaPipe 골격</div>
+            <div class="panel-head panel-head-utility" aria-label="사용자 카메라 제어">
+              <p class="panel-simple-title">사용자 모습</p>
+              <button id="cameraSwitch" class="text-btn camera-switch-btn" type="button" aria-label="카메라 전면/후면 전환">카메라 전면/후면 전환</button>
             </div>
             <div class="video-stage">
               <div class="video-stack">
                 <video
                   id="userVideo"
                   class="frame-video"
-                  src="media/user.mp4?v=20260421-uservideo1"
+                  src="media/user.mp4?v=20260421-ios1"
                   preload="auto"
                   muted
                   playsinline
                 ></video>
                 <canvas id="overlayCanvas" class="frame-overlay-canvas" aria-hidden="true"></canvas>
               </div>
-              <img id="overlayFrame" class="frame-img" alt="사용자 모습 오버레이 프레임">
+              <img id="overlayFrame" class="frame-img" alt="사용자 동작 오버레이 프레임">
             </div>
           </article>
 
           <article class="panel avatar-panel">
             <div class="panel-head">
               <div>
-                <p class="eyebrow">3D 비교</p>
+                <p class="eyebrow">3D 아바타 기반 비교</p>
                 <h2>모범 아바타와 사용자 아바타</h2>
               </div>
               <div class="legend-line" aria-label="아바타 색상 설명">
-                <span class="legend-item"><span class="dot dot-blue"></span>모범 correct</span>
-                <span class="legend-item"><span class="dot dot-white"></span>사용자 user</span>
-                <span class="legend-item"><span class="dot dot-red"></span>편차 부위</span>
+                <span class="legend-item"><span class="dot dot-blue"></span>모범 동작</span>
+                <span class="legend-item"><span class="dot dot-white"></span>사용자</span>
+                <span class="legend-item"><span class="dot dot-red"></span>교정 필요</span>
               </div>
             </div>
             <div class="avatar-viewport">
@@ -170,7 +303,7 @@
                 <div id="avatarMessage" class="avatar-three-message" aria-live="polite">
                   <span>3D MOTION CAPTURE</span>
                   <strong>아바타 로딩 중</strong>
-                  <em>MediaPipe 20fps BVH 기반 비교 장면을 준비합니다.</em>
+                  <em>BVH 기반 비교 장면을 준비합니다.</em>
                 </div>
               </div>
             </div>
@@ -188,11 +321,17 @@
               </div>
             </div>
 
-            <div class="control-row">
+            <div id="playbackControls" class="control-row playback-controls" hidden>
               <button id="highlightReplay" class="text-btn highlight-btn" type="button" hidden>하이라이트 보기</button>
               <button id="playToggle" class="icon-btn" type="button" aria-label="재생">재생</button>
-              <button id="voiceToggle" class="text-btn" type="button">음성 안내 꺼짐</button>
-              <span id="phaseLabel" class="phase-tag">실시간 분석</span>
+              <button id="voiceToggle" class="text-btn" type="button">음성 안내 ON</button>
+              <span id="phaseLabel" class="phase-tag" hidden></span>
+            </div>
+
+            <div id="sessionActionRow" class="session-action-row">
+              <button id="completeWorkout" class="primary-action" type="button">운동완료</button>
+              <button id="nextExercise" class="weak-action" type="button" hidden>다음 운동 진행</button>
+              <button id="finishWorkout" class="primary-action" type="button" hidden>오늘 운동 종료</button>
             </div>
 
             <p id="currentIssue" class="current-issue">분석 대기 중</p>
@@ -211,7 +350,7 @@
                 <strong id="matchValue">--</strong>
               </div>
               <div class="kpi-card">
-                <span>교정 수</span>
+                <span>교정 포인트</span>
                 <strong id="issueCount">--</strong>
               </div>
             </div>
@@ -252,19 +391,19 @@
               </div>
               <div id="expertGrid" class="expert-grid">
                 <article class="expert-card">
-                  <span class="expert-role">전문의 관점</span>
+                  <span class="expert-role">의학적 관점</span>
                   <strong id="medicalStatus">분석 중...</strong>
-                  <p id="medicalDetail" class="detail-copy">세트가 끝나면 관절 부담과 안정성 중심의 평가가 여기에 표시됩니다.</p>
+                  <p id="medicalDetail" class="detail-copy">세트가 끝나면 관절 부담과 안정성 중심의 평가가 표시됩니다.</p>
                 </article>
                 <article class="expert-card">
                   <span class="expert-role">트레이너 관점</span>
                   <strong id="trainerStatus">분석 중...</strong>
-                  <p id="trainerDetail" class="detail-copy">세트가 끝나면 다음 반복에서 바로 적용할 교정 포인트가 여기에 표시됩니다.</p>
+                  <p id="trainerDetail" class="detail-copy">다음 반복에서 바로 적용할 교정 포인트가 표시됩니다.</p>
                 </article>
               </div>
             </div>
 
-            <div id="timeline" class="timeline" aria-label="재생 진행 막대"></div>
+            <div id="timeline" class="timeline" aria-label="재생 진행 막대" hidden></div>
           </article>
         </div>
       </section>
@@ -274,9 +413,16 @@
   <script src="vendor/three.min.js?v=0.128.0"></script>
   <script src="vendor/GLTFLoader.js?v=0.128.0"></script>
   <script src="vendor/SkeletonUtils.js?v=0.128.0"></script>
-    <script src="data/session-data.js?v=20260421-retarget1"></script>
-    <script src="tuning.js?v=20260421-tuning8"></script>
-    <script src="avatar-scene.js?v=20260421-bvh22"></script>
-    <script src="app.js?v=20260421-layoutsync9"></script>
+  <script src="data/session-data.js?v=20260421-retarget1"></script>
+  <script src="tuning.js?v=20260421-neck2"></script>
+  <script src="avatar-scene.js?v=20260421-neck1"></script>
+  <script src="app.js?v=20260422-voice1"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js?v=20260422-attendance1").catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

@@ -13,7 +13,7 @@
   const QUERY = new URLSearchParams(window.location.search);
   const DEBUG_SKELETON = QUERY.get("debugSkeleton") === "1";
   const DEBUG_RETARGET = QUERY.get("debugRetarget") === "1";
-  const ASSET_VERSION = "20260421-bvh22";
+  const ASSET_VERSION = "20260421-bvh23";
   const TUNING = window.WORKWITH_TUNING || {};
   const AVATAR_TUNING = TUNING.avatar || {};
 
@@ -293,6 +293,8 @@
 
   const FOOT_TURN_Y = tunedNumber(AVATAR_TUNING.stance?.footTurnY, 0.0);
   const TOE_TURN_Y = tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.12);
+  const HEAD_YAW_OFFSET_Y = tunedNumber(AVATAR_TUNING.head?.yawOffsetY, 0.0);
+  const NECK_THICKNESS_SCALE_XZ = tunedNumber(AVATAR_TUNING.neck?.thicknessScaleXZ, 1.0);
   const STANCE_ROTATION_OFFSETS = {
     "foot.L": { y: -FOOT_TURN_Y },
     "foot.R": { y: FOOT_TURN_Y },
@@ -302,6 +304,7 @@
 
   const LOCK_FEET_TO_GROUND = AVATAR_TUNING.feet?.lockToGround !== false;
   const FREEZE_FOOT_ROTATION = AVATAR_TUNING.feet?.freezeRotation !== false;
+  const FOOT_FREEZE_YAW_OFFSET = tunedNumber(AVATAR_TUNING.feet?.freezeYawOffsetY, Math.PI);
   const KEEP_FEET_FLAT = AVATAR_TUNING.feet?.keepFlat !== false;
   const FOOT_VERTICAL_INFLUENCE = tunedNumber(AVATAR_TUNING.feet?.verticalInfluence, 0.0);
 
@@ -774,6 +777,7 @@
           bone: object,
           restPosition: object.position.clone(),
           restQuaternion: object.quaternion.clone(),
+          restScale: object.scale.clone(),
           restWorldQuaternion: object.getWorldQuaternion(new THREE.Quaternion()),
           restDirectionParent: null,
         };
@@ -953,6 +957,7 @@
       rig.bones.forEach((entry) => {
         entry.bone.position.copy(entry.restPosition);
         entry.bone.quaternion.copy(entry.restQuaternion);
+        entry.bone.scale.copy(entry.restScale);
       });
 
       const rootJoint = motion.jointMap.get("hips") || motion.joints[0];
@@ -986,6 +991,8 @@
       this.applyShoulderPose(rig);
       this.applyStancePose(rig);
       this.applyHandPose(rig);
+      this.applyHeadPose(rig);
+      this.applyNeckPose(rig);
       this.freezeFootWorldRotations(rig);
       rig.group.updateMatrixWorld(true);
       this.lockRigFeetToGround(rig);
@@ -1021,6 +1028,35 @@
           entry.bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(BVH_AXIS.Z, rotation.z));
         }
       });
+    }
+
+    applyHeadPose(rig) {
+      if (!HEAD_YAW_OFFSET_Y) return;
+      const entry = rig.bones.get("spine.004");
+      if (!entry) return;
+      entry.bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(BVH_AXIS.Y, HEAD_YAW_OFFSET_Y));
+      entry.bone.updateMatrixWorld(true);
+    }
+
+    applyNeckPose(rig) {
+      if (!Number.isFinite(NECK_THICKNESS_SCALE_XZ) || Math.abs(NECK_THICKNESS_SCALE_XZ - 1) <= 1e-4) return;
+      const neckEntry = rig.bones.get("spine.004");
+      if (!neckEntry) return;
+
+      neckEntry.bone.scale.set(
+        neckEntry.restScale.x * NECK_THICKNESS_SCALE_XZ,
+        neckEntry.restScale.y,
+        neckEntry.restScale.z * NECK_THICKNESS_SCALE_XZ,
+      );
+
+      const headEntry = rig.bones.get("spine.005");
+      if (headEntry) {
+        headEntry.bone.scale.set(
+          headEntry.restScale.x / NECK_THICKNESS_SCALE_XZ,
+          headEntry.restScale.y,
+          headEntry.restScale.z / NECK_THICKNESS_SCALE_XZ,
+        );
+      }
     }
 
     applyShoulderPose(rig) {
@@ -1074,8 +1110,11 @@
         const entry = rig.bones.get(boneName);
         if (!entry?.restWorldQuaternion) return;
         const parent = entry.bone.parent || rig.root;
+        const targetWorldQuaternion = new THREE.Quaternion()
+          .setFromAxisAngle(BVH_AXIS.Y, FOOT_FREEZE_YAW_OFFSET)
+          .multiply(entry.restWorldQuaternion);
         const parentWorldQuaternion = parent.getWorldQuaternion(new THREE.Quaternion()).invert();
-        entry.bone.quaternion.copy(parentWorldQuaternion.multiply(entry.restWorldQuaternion));
+        entry.bone.quaternion.copy(parentWorldQuaternion.multiply(targetWorldQuaternion));
         entry.bone.updateMatrixWorld(true);
       });
     }

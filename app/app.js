@@ -1,16 +1,17 @@
 const WARNING_SCORE_THRESHOLD = 76;
-const VOICE_SCORE_THRESHOLD = 72;
-const VOICE_MIN_GAP_MS = 8000;
-const VOICE_REPEAT_GAP_MS = 14000;
-const VOICE_STABLE_FRAMES = 4;
+const SCORE_DISPLAY_OFFSET = 6;
 const PREP_PHASE_SEC = 0;
 const ACTIVE_EXERCISE_END_SEC = Number.POSITIVE_INFINITY;
 const FEEDBACK_INTERVAL_SEC = 3;
-const HIGHLIGHT_FLASH_DURATION_SEC = 0.75;
+const HIGHLIGHT_FLASH_DURATION_SEC = 1.08;
+const VOICE_PULSE_SPEAK_WINDOW_SEC = 0.28;
+const VOICE_LOCK_FALLBACK_MS = 1800;
 const MEDIA_CACHE_BUST = "analysis-runtime-v2";
 const USER_VIDEO_CACHE_BUST = "user-video-overlay-v2";
 const USER_VIDEO_DRIFT_TOLERANCE_SEC = 0.12;
 const USER_FALLBACK_DURATION_SEC = 14;
+const ATTENDANCE_STORAGE_KEY = "workwith-attendance-v1";
+const DEFAULT_STREAK_DAYS = 6;
 const DEBUG_SESSION_OPTIONS = parseDebugSessionOptions();
 const TUNING = window.WORKWITH_TUNING || {};
 const PLAYBACK_TUNING = TUNING.playback || {};
@@ -91,6 +92,25 @@ const ISSUE_FEEDBACK_COPY = {
   },
 };
 
+const ISSUE_VOICE_SHORT_TEXT = {
+  hip_hinge: "엉덩이 뒤로",
+  knee_drive: "무릎 더 뒤로",
+  balance: "중심 유지",
+  heel_pressure: "뒤꿈치",
+  posterior_chain: "엉덩이 힘",
+  default: "자세 교정",
+};
+
+const VOICE_AUDIO_CACHE_BUST = "voice-v1";
+const ISSUE_VOICE_AUDIO_FILES = {
+  hip_hinge: "media/voice/hip-hinge.mp3",
+  knee_drive: "media/voice/knee-drive.mp3",
+  balance: "media/voice/balance.mp3",
+  heel_pressure: "media/voice/heel-pressure.mp3",
+  posterior_chain: "media/voice/posterior-chain.mp3",
+  default: "media/voice/default.mp3",
+};
+
 const FINAL_METRIC_COPY = {
   match: {
     label: "모범 자세 유사도",
@@ -122,10 +142,14 @@ const state = {
   repStarts: [],
   descentSegments: [],
   currentFrame: null,
-  voiceEnabled: false,
+  voiceEnabled: true,
   hasSessionStarted: false,
   avatarInitialized: false,
-  selectedExerciseName: "스쿼트",
+  selectedExerciseName: "바벨 스쿼트",
+  attendance: {
+    streakDays: DEFAULT_STREAK_DAYS,
+    lastCompletedDate: null,
+  },
   imageCache: new Map(),
   preloadWindow: 18,
   resizeTimerId: null,
@@ -156,6 +180,13 @@ const state = {
     stableCount: 0,
     lastSpokenIssueId: null,
     lastSpokenAt: 0,
+    lastCueWindowKey: null,
+    isSpeaking: false,
+    unlockTimerId: null,
+    primed: false,
+    preferredVoiceURI: null,
+    clipCache: new Map(),
+    activeClipKey: null,
   },
   highlight: {
     available: false,
@@ -170,15 +201,21 @@ const state = {
 
 const elements = {
   launchExperience: document.getElementById("launchExperience"),
+  homeDashboard: document.getElementById("homeDashboard"),
   logoSplash: document.getElementById("logoSplash"),
   exerciseSelect: document.getElementById("exerciseSelect"),
   demoView: document.getElementById("demoView"),
+  attendanceView: document.getElementById("attendanceView"),
   correctDemoVideo: document.getElementById("correctDemoVideo"),
+  startWorkout: document.getElementById("startWorkout"),
   squatStart: document.getElementById("squatStart"),
   exerciseCards: document.querySelectorAll(".exercise-card[data-exercise-name]"),
+  streakCount: document.getElementById("streakCount"),
   demoExerciseName: document.getElementById("demoExerciseName"),
   selectedExerciseName: document.getElementById("selectedExerciseName"),
   skipDemo: document.getElementById("skipDemo"),
+  attendanceHeadline: document.getElementById("attendanceHeadline"),
+  attendanceHome: document.getElementById("attendanceHome"),
   sessionApp: document.getElementById("sessionApp"),
   overlayFrame: document.getElementById("overlayFrame"),
   userVideo: document.getElementById("userVideo"),
@@ -187,9 +224,14 @@ const elements = {
   avatarMessage: document.getElementById("avatarMessage"),
   currentIssue: document.getElementById("currentIssue"),
   scoreValue: document.getElementById("scoreValue"),
+  playbackControls: document.getElementById("playbackControls"),
   playToggle: document.getElementById("playToggle"),
   voiceToggle: document.getElementById("voiceToggle"),
   highlightReplay: document.getElementById("highlightReplay"),
+  sessionActionRow: document.getElementById("sessionActionRow"),
+  completeWorkout: document.getElementById("completeWorkout"),
+  nextExercise: document.getElementById("nextExercise"),
+  finishWorkout: document.getElementById("finishWorkout"),
   phaseLabel: document.getElementById("phaseLabel"),
   averageScore: document.getElementById("averageScore"),
   repCount: document.getElementById("repCount"),
@@ -217,6 +259,7 @@ const elements = {
   trainerStatus: document.getElementById("trainerStatus"),
   trainerDetail: document.getElementById("trainerDetail"),
   timeline: document.getElementById("timeline"),
+  cameraSwitch: document.getElementById("cameraSwitch"),
 };
 
 function parseDebugSessionOptions() {
@@ -224,7 +267,7 @@ function parseDebugSessionOptions() {
     return {
       autoStart: false,
       skipDemo: false,
-      exerciseName: "스쿼트",
+      exerciseName: "바벨 스쿼트",
       timeSec: null,
       pause: false,
     };
@@ -236,7 +279,7 @@ function parseDebugSessionOptions() {
   return {
     autoStart: params.get("autostart") === "1",
     skipDemo: params.get("skipDemo") === "1" || params.get("autostart") === "1",
-    exerciseName: params.get("exercise") || "스쿼트",
+    exerciseName: params.get("exercise") || "바벨 스쿼트",
     timeSec: Number.isFinite(parsedTimeSec) ? parsedTimeSec : null,
     pause: params.get("pause") === "1" || hasTimeSec,
   };
@@ -246,6 +289,291 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function getDeviceLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function loadAttendanceState() {
+  const fallback = {
+    streakDays: DEFAULT_STREAK_DAYS,
+    lastCompletedDate: null,
+  };
+
+  if (typeof window === "undefined" || !window.localStorage) {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      streakDays:
+        Number.isFinite(parsed?.streakDays) && parsed.streakDays >= 0
+          ? Math.round(parsed.streakDays)
+          : DEFAULT_STREAK_DAYS,
+      lastCompletedDate:
+        typeof parsed?.lastCompletedDate === "string" && parsed.lastCompletedDate
+          ? parsed.lastCompletedDate
+          : null,
+    };
+  } catch (error) {
+    console.warn("Unable to load attendance state.", error);
+    return fallback;
+  }
+}
+
+function saveAttendanceState() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(state.attendance));
+  } catch (error) {
+    console.warn("Unable to save attendance state.", error);
+  }
+}
+
+function syncAttendanceUi() {
+  const streakText = `${state.attendance.streakDays}일`;
+  if (elements.streakCount) {
+    elements.streakCount.textContent = streakText;
+  }
+  if (elements.attendanceHeadline) {
+    elements.attendanceHeadline.textContent = `${state.attendance.streakDays}일 연속 꾸준한 운동에 성공하셨어요!`;
+  }
+}
+
+function ensureAttendanceCheer() {
+  if (!elements.attendanceHome || !elements.attendanceView) return;
+  let cheer = elements.attendanceView.querySelector(".attendance-cheer");
+  if (cheer) return;
+
+  cheer = document.createElement("p");
+  cheer.className = "attendance-cheer";
+  cheer.innerHTML = "내일도 화이팅!<br>WorkWith!";
+  elements.attendanceHome.insertAdjacentElement("beforebegin", cheer);
+}
+
+function markWorkoutCompletedToday() {
+  const todayKey = getDeviceLocalDateKey();
+  if (state.attendance.lastCompletedDate === todayKey) {
+    syncAttendanceUi();
+    return false;
+  }
+
+  state.attendance.streakDays += 1;
+  state.attendance.lastCompletedDate = todayKey;
+  saveAttendanceState();
+  syncAttendanceUi();
+  return true;
+}
+
+function syncVoiceToggleLabel() {
+  if (!elements.voiceToggle) return;
+  elements.voiceToggle.textContent = state.voiceEnabled ? "음성 안내 ON" : "음성 안내 OFF";
+  elements.voiceToggle.setAttribute("aria-pressed", state.voiceEnabled ? "true" : "false");
+}
+
+function getPreferredSpeechVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const voices = window.speechSynthesis.getVoices();
+  const preferredVoice =
+    voices.find((voice) => voice.lang === "ko-KR") ||
+    voices.find((voice) => (voice.lang || "").toLowerCase() === "ko-kr") ||
+    voices.find((voice) => (voice.lang || "").toLowerCase().startsWith("ko")) ||
+    voices[0] ||
+    null;
+  state.voice.preferredVoiceURI = preferredVoice?.voiceURI || null;
+  return preferredVoice;
+}
+
+function clearVoiceUnlockTimer() {
+  if (!state.voice.unlockTimerId) return;
+  window.clearTimeout(state.voice.unlockTimerId);
+  state.voice.unlockTimerId = null;
+}
+
+function releaseVoicePlaybackLock() {
+  clearVoiceUnlockTimer();
+  state.voice.isSpeaking = false;
+}
+
+function lockVoicePlayback() {
+  state.voice.isSpeaking = true;
+  clearVoiceUnlockTimer();
+  state.voice.unlockTimerId = window.setTimeout(() => {
+    releaseVoicePlaybackLock();
+  }, VOICE_LOCK_FALLBACK_MS);
+}
+
+function primeSpeechSynthesis(useWarmup = false) {
+  if (!("speechSynthesis" in window)) return;
+  const synth = window.speechSynthesis;
+  try {
+    synth.resume();
+  } catch {}
+
+  const preferredVoice = getPreferredSpeechVoice();
+  if (!useWarmup || state.voice.primed) return;
+
+  state.voice.primed = true;
+  const warmupUtterance = new SpeechSynthesisUtterance(" ");
+  warmupUtterance.lang = "ko-KR";
+  warmupUtterance.volume = 0;
+  warmupUtterance.rate = 1;
+  warmupUtterance.pitch = 1;
+  if (preferredVoice) {
+    warmupUtterance.voice = preferredVoice;
+  }
+  warmupUtterance.onerror = () => {
+    state.voice.primed = false;
+  };
+
+  try {
+    synth.speak(warmupUtterance);
+  } catch {
+    state.voice.primed = false;
+  }
+}
+
+function getVoiceClipKey(issueId) {
+  return ISSUE_VOICE_AUDIO_FILES[issueId] ? issueId : "default";
+}
+
+function ensureVoiceClip(issueId) {
+  const clipKey = getVoiceClipKey(issueId);
+  if (state.voice.clipCache.has(clipKey)) {
+    return state.voice.clipCache.get(clipKey);
+  }
+
+  const clipPath = ISSUE_VOICE_AUDIO_FILES[clipKey];
+  if (!clipPath) return null;
+
+  const clip = new Audio(`${clipPath}?v=${VOICE_AUDIO_CACHE_BUST}`);
+  clip.preload = "auto";
+  clip.addEventListener("ended", () => {
+    if (state.voice.activeClipKey === clipKey) {
+      state.voice.activeClipKey = null;
+    }
+    releaseVoicePlaybackLock();
+  });
+  clip.addEventListener("error", () => {
+    if (state.voice.activeClipKey === clipKey) {
+      state.voice.activeClipKey = null;
+    }
+    releaseVoicePlaybackLock();
+  });
+
+  state.voice.clipCache.set(clipKey, clip);
+  return clip;
+}
+
+function stopActiveVoiceClip() {
+  if (!state.voice.activeClipKey) return;
+  const activeClip = state.voice.clipCache.get(state.voice.activeClipKey);
+  state.voice.activeClipKey = null;
+  if (!activeClip) return;
+  try {
+    activeClip.pause();
+    activeClip.currentTime = 0;
+  } catch {}
+}
+
+function preloadGeneratedVoiceClips() {
+  Object.keys(ISSUE_VOICE_AUDIO_FILES).forEach((issueId) => {
+    const clip = ensureVoiceClip(issueId);
+    if (!clip) return;
+    try {
+      clip.load();
+    } catch {}
+  });
+}
+
+function playBrowserSpeechCue(shortText) {
+  if (!("speechSynthesis" in window)) return false;
+  primeSpeechSynthesis();
+
+  const synth = window.speechSynthesis;
+  if (synth.speaking || synth.pending) return false;
+
+  const utterance = new SpeechSynthesisUtterance(shortText);
+  utterance.lang = "ko-KR";
+  utterance.rate = 1.08;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+  const preferredVoice = getPreferredSpeechVoice();
+  if (preferredVoice) {
+    utterance.voice = preferredVoice;
+  }
+  utterance.onend = () => {
+    releaseVoicePlaybackLock();
+  };
+  utterance.onerror = () => {
+    releaseVoicePlaybackLock();
+  };
+
+  try {
+    synth.speak(utterance);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function playPreferredVoiceCue(issueId, shortText) {
+  const clipKey = getVoiceClipKey(issueId);
+  const clip = ensureVoiceClip(clipKey);
+  if (!clip) {
+    return playBrowserSpeechCue(shortText);
+  }
+
+  stopActiveVoiceClip();
+  state.voice.activeClipKey = clipKey;
+
+  try {
+    clip.currentTime = 0;
+  } catch {}
+
+  const playResult = clip.play();
+  if (playResult && typeof playResult.then === "function") {
+    playResult.catch(() => {
+      if (state.voice.activeClipKey === clipKey) {
+        state.voice.activeClipKey = null;
+      }
+      if (!playBrowserSpeechCue(shortText)) {
+        releaseVoicePlaybackLock();
+      }
+    });
+  }
+
+  return true;
+}
+
+function getVoicePrompt(issueId, scheduledFeedback, warningIssue) {
+  const promptMap = {
+    hip_hinge: "엉덩이 더 뒤로",
+    knee_drive: "무릎을 좀 더 뒤로",
+    balance: "중심을 잡아 주세요",
+    heel_pressure: "뒤꿈치로 버텨 주세요",
+    posterior_chain: "엉덩이에 힘 주세요",
+    default: "자세를 바로잡아 주세요",
+  };
+  return (
+    promptMap[issueId] ||
+    scheduledFeedback?.label ||
+    warningIssue?.label ||
+    promptMap.default
+  );
+}
+
 function smoothstep(value) {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
@@ -253,6 +581,11 @@ function smoothstep(value) {
 
 function fmt(value, digits = 1, suffix = "") {
   return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : "--";
+}
+
+function adjustDisplayedScore(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return clamp(value - SCORE_DISPLAY_OFFSET, 0, 100);
 }
 
 function median(values) {
@@ -371,7 +704,7 @@ function buildScoreBuckets(frames) {
     buckets.set(second, current);
   });
   buckets.forEach((bucket, second) => {
-    buckets.set(second, { ...bucket, avg: bucket.sum / bucket.count });
+    buckets.set(second, { ...bucket, avg: adjustDisplayedScore(bucket.sum / bucket.count) });
   });
   return buckets;
 }
@@ -470,8 +803,8 @@ function buildAnalysisBuckets(frames) {
       .sort((a, b) => b.severity - a.severity)[0] || null;
 
     buckets.set(second, {
-      avgScore: bucket.scoreSum / Math.max(bucket.count, 1),
-      runningAvgScore: cumulativeScore / Math.max(cumulativeFrames, 1),
+      avgScore: adjustDisplayedScore(bucket.scoreSum / Math.max(bucket.count, 1)),
+      runningAvgScore: adjustDisplayedScore(cumulativeScore / Math.max(cumulativeFrames, 1)),
       repCount: cumulativeRepCount,
       issueCount: Math.round(bucket.issueCountSum / Math.max(bucket.count, 1)),
       topIssue,
@@ -596,11 +929,122 @@ function getReportFindings() {
   });
 }
 
+function setStandaloneUiClass() {
+  const isStandalone =
+    window.navigator?.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)")?.matches;
+  document.documentElement.classList.toggle("is-standalone", Boolean(isStandalone));
+}
+
+function showLaunchScreen(screenName) {
+  const screens = {
+    home: elements.homeDashboard,
+    exercise: elements.exerciseSelect,
+    trainerLesson: elements.demoView,
+    attendance: elements.attendanceView,
+  };
+
+  Object.entries(screens).forEach(([name, screen]) => {
+    if (!screen) return;
+    const active = name === screenName;
+    screen.hidden = !active;
+    screen.classList.toggle("is-active", active);
+  });
+
+  if (elements.launchExperience) {
+    elements.launchExperience.hidden = false;
+  }
+
+  if (screenName === "home" || screenName === "attendance") {
+    syncAttendanceUi();
+  }
+}
+
+function playLaunchSplash() {
+  if (!elements.logoSplash) return;
+  elements.logoSplash.hidden = false;
+  elements.logoSplash.classList.remove("is-complete");
+
+  window.setTimeout(() => {
+    if (!elements.logoSplash) return;
+    elements.logoSplash.classList.add("is-complete");
+    window.setTimeout(() => {
+      if (!elements.logoSplash) return;
+      elements.logoSplash.hidden = true;
+    }, 500);
+  }, 980);
+}
+
+function flashButton(button) {
+  if (!button) return;
+  button.classList.remove("is-tapped");
+  void button.offsetWidth;
+  button.classList.add("is-tapped");
+}
+
+function updateSessionControls() {
+  const reportPass = isReportPass();
+
+  if (elements.sessionApp) {
+    elements.sessionApp.dataset.pass = reportPass ? "review" : "live";
+  }
+  if (elements.playbackControls) {
+    elements.playbackControls.hidden = false;
+    elements.playbackControls.classList.toggle("voice-only", !reportPass);
+  }
+  if (elements.playToggle) {
+    elements.playToggle.hidden = !reportPass;
+  }
+  if (elements.voiceToggle) {
+    elements.voiceToggle.hidden = false;
+    syncVoiceToggleLabel();
+  }
+  if (elements.timeline) {
+    elements.timeline.hidden = !reportPass;
+  }
+  if (elements.completeWorkout) {
+    elements.completeWorkout.hidden = reportPass;
+  }
+  if (elements.nextExercise) {
+    elements.nextExercise.hidden = !reportPass;
+  }
+  if (elements.finishWorkout) {
+    elements.finishWorkout.hidden = !reportPass;
+  }
+  if (elements.sessionActionRow) {
+    elements.sessionActionRow.classList.toggle("review-mode", reportPass);
+  }
+  if (elements.phaseLabel) {
+    elements.phaseLabel.hidden = true;
+    elements.phaseLabel.textContent = "";
+  }
+
+  syncHighlightButton();
+}
+
+function showAttendanceAndReturnHome() {
+  pause();
+  markWorkoutCompletedToday();
+  state.hasSessionStarted = false;
+  state.highlight.active = false;
+  resetSessionProgress();
+
+  if (elements.correctDemoVideo) {
+    elements.correctDemoVideo.pause();
+    elements.correctDemoVideo.currentTime = 0;
+  }
+  if (elements.sessionApp) {
+    elements.sessionApp.hidden = true;
+  }
+
+  showLaunchScreen("attendance");
+}
+
 function syncHighlightButton() {
   const button = elements.highlightReplay;
   if (!button) return;
 
-  const available = state.highlight.available || state.session.passIndex >= 1;
+  const available = isReportPass() && (state.highlight.available || state.session.passIndex >= 1);
   state.highlight.available = available;
   button.hidden = !available;
   button.disabled = state.highlight.active;
@@ -614,7 +1058,7 @@ function startHighlightPlayback() {
   state.highlight.available = true;
   state.highlight.active = true;
   state.session.passIndex = Math.max(state.session.passIndex, 1);
-  syncHighlightButton();
+  updateSessionControls();
   seekToTime(state.highlight.startSec);
   play();
 }
@@ -623,13 +1067,13 @@ function resetSessionProgress() {
   state.session.passIndex = 0;
   state.highlight.available = false;
   state.highlight.active = false;
-  syncHighlightButton();
+  updateSessionControls();
   resetVoiceTracking();
 }
 
 function getDisplayedScore(frame) {
   const bucket = state.scoreBuckets.get(Math.floor(frame.time_sec));
-  return bucket ? bucket.avg : frame.score;
+  return bucket ? bucket.avg : adjustDisplayedScore(frame.score);
 }
 
 function getUserInputVideoMeta() {
@@ -738,6 +1182,24 @@ function getSourceAnalysisDurationSec() {
 
 function getPlaybackTimeForIndex(index) {
   return clamp(index / Math.max(state.player.fps, 1), 0, getPlaybackDurationSec());
+}
+
+function getPlaybackIndexForTime(timeSec) {
+  return Math.max(
+    0,
+    Math.min(
+      getPlaybackFrameCount() - 1,
+      Math.round(clamp(timeSec, 0, getPlaybackDurationSec()) * Math.max(state.player.fps, 1)),
+    ),
+  );
+}
+
+function getVideoDrivenPlaybackIndex() {
+  const video = elements.userVideo;
+  if (!state.player.isPlaying || !video || video.ended || !Number.isFinite(video.currentTime)) {
+    return null;
+  }
+  return getPlaybackIndexForTime(video.currentTime);
 }
 
 function mapPlaybackTimeToSourceTime(playbackTimeSec) {
@@ -1044,6 +1506,11 @@ function syncUserVideoFrame(frame, playbackTimeSec = 0, forceSeek = false) {
     video,
     Number.isFinite(playbackTimeSec) ? playbackTimeSec : (frame?.time_sec || 0),
   );
+  if (state.player.isPlaying && !forceSeek) {
+    renderPoseOverlayAtTime(video.currentTime);
+    return;
+  }
+
   renderPoseOverlayAtTime(targetTime, forceSeek || !state.player.isPlaying);
   const drift = Math.abs((video.currentTime || 0) - targetTime);
 
@@ -1124,6 +1591,10 @@ function getTimedHighlightJointNames(playbackTimeSec, names = []) {
   const phaseSec = ((playbackTimeSec % FEEDBACK_INTERVAL_SEC) + FEEDBACK_INTERVAL_SEC) % FEEDBACK_INTERVAL_SEC;
   if (phaseSec > HIGHLIGHT_FLASH_DURATION_SEC) return [];
   return names.filter((name) => HIGHLIGHT_ALLOWED_JOINTS.has(name));
+}
+
+function getFeedbackPulsePhaseSec(playbackTimeSec) {
+  return ((playbackTimeSec % FEEDBACK_INTERVAL_SEC) + FEEDBACK_INTERVAL_SEC) % FEEDBACK_INTERVAL_SEC;
 }
 
 function getFeedbackCopy(issueId) {
@@ -1328,16 +1799,24 @@ function getLiveMetrics(metrics) {
 function getReportMatchScore() {
   const matchMetric = (state.data?.report?.final_scores || []).find((metric) => metric.id === "match");
   if (typeof matchMetric?.value === "number" && Number.isFinite(matchMetric.value)) {
-    return matchMetric.value;
+    return adjustDisplayedScore(matchMetric.value);
   }
-  return state.data?.overview?.average_score || 0;
+  return adjustDisplayedScore(state.data?.overview?.average_score || 0);
 }
 
 function getCompactFinalMetrics() {
   const preferredIds = ["match", "heel_contact", "hip_hinge", "stability", "posterior_chain"];
   const reportMetrics = state.data.report.final_scores || [];
   return preferredIds
-    .map((id) => reportMetrics.find((metric) => metric.id === id))
+    .map((id) => {
+      const metric = reportMetrics.find((item) => item.id === id);
+      if (!metric) return null;
+      if (metric.id !== "match") return metric;
+      return {
+        ...metric,
+        value: adjustDisplayedScore(metric.value),
+      };
+    })
     .filter(Boolean);
 }
 
@@ -1429,39 +1908,48 @@ function formatPhase(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
 function resetVoiceTracking() {
   state.voice.candidateIssueId = null;
   state.voice.stableCount = 0;
+  state.voice.lastCueWindowKey = null;
+  state.voice.lastSpokenIssueId = null;
+  state.voice.lastSpokenAt = 0;
+  stopActiveVoiceClip();
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  releaseVoicePlaybackLock();
 }
 
-function maybeSpeak(frame, warningIssue) {
+function maybeSpeak(warningIssue, scheduledFeedback, playbackTimeSec) {
   if (isReportPass()) return;
-  if (!state.voiceEnabled || !warningIssue || !("speechSynthesis" in window)) return;
-  if (frame.score > VOICE_SCORE_THRESHOLD) {
-    resetVoiceTracking();
+  if (!state.voiceEnabled || !warningIssue) return;
+  const highlightedJointNames = getTimedHighlightJointNames(
+    playbackTimeSec,
+    scheduledFeedback?.highlightedJointNames || [],
+  );
+  if (!highlightedJointNames.length) return;
+
+  const phaseSec = getFeedbackPulsePhaseSec(playbackTimeSec);
+  if (phaseSec > Math.min(HIGHLIGHT_FLASH_DURATION_SEC, VOICE_PULSE_SPEAK_WINDOW_SEC)) return;
+
+  const issueId = warningIssue.id;
+  const cueWindowIndex = Math.max(0, Math.floor(Math.max(playbackTimeSec, 0) / FEEDBACK_INTERVAL_SEC));
+  const cueWindowKey = `${cueWindowIndex}:${issueId}`;
+  if (state.voice.lastCueWindowKey === cueWindowKey) return;
+  if (state.voice.isSpeaking) return;
+  if ("speechSynthesis" in window) {
+    const synth = window.speechSynthesis;
+    if (synth.speaking || synth.pending) return;
+  }
+
+  const shortText = getVoicePrompt(issueId, scheduledFeedback, warningIssue);
+  lockVoicePlayback();
+  if (!playPreferredVoiceCue(issueId, shortText)) {
+    releaseVoicePlaybackLock();
     return;
   }
 
-  const issueId = warningIssue.id;
-  if (state.voice.candidateIssueId === issueId) {
-    state.voice.stableCount += 1;
-  } else {
-    state.voice.candidateIssueId = issueId;
-    state.voice.stableCount = 1;
-  }
-
-  if (state.voice.stableCount < VOICE_STABLE_FRAMES) return;
-  if (window.speechSynthesis.speaking) return;
-
-  const now = Date.now();
-  if (now - state.voice.lastSpokenAt < VOICE_MIN_GAP_MS) return;
-  if (state.voice.lastSpokenIssueId === issueId && now - state.voice.lastSpokenAt < VOICE_REPEAT_GAP_MS) return;
-
-  const utterance = new SpeechSynthesisUtterance(frame.voice_text || frame.coach_text);
-  utterance.lang = "ko-KR";
-  utterance.rate = 0.98;
-  window.speechSynthesis.speak(utterance);
-
   state.voice.lastSpokenIssueId = issueId;
-  state.voice.lastSpokenAt = now;
-  state.voice.stableCount = 0;
+  state.voice.lastSpokenAt = Date.now();
+  state.voice.lastCueWindowKey = cueWindowKey;
 }
 
 function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
@@ -1482,7 +1970,7 @@ function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
   const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
   const effectiveIssueId = scheduledFeedback.issueId || topIssue?.id || null;
   const effectiveIssueLabel = scheduledFeedback.label || topIssue?.label || "자세 비교 중";
-  const warningIssue = effectiveIssueId && displayedScore <= WARNING_SCORE_THRESHOLD
+  const warningIssue = effectiveIssueId && (scheduledFeedback.issueId || displayedScore <= WARNING_SCORE_THRESHOLD)
     ? { id: effectiveIssueId, label: effectiveIssueLabel, severity: scheduledFeedback.severity || topIssue?.severity || 0 }
     : null;
   const reportReady = isReportPass();
@@ -1550,7 +2038,7 @@ function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
   }
 
   elements.scoreValue.textContent = `${Math.round(reportReady ? finalMatchScore : displayedScore)}`;
-  elements.averageScore.textContent = `${Math.round(reportReady ? overview.average_score : bucket.runningAvgScore)}`;
+  elements.averageScore.textContent = `${Math.round(reportReady ? adjustDisplayedScore(overview.average_score) : bucket.runningAvgScore)}`;
   elements.repCount.textContent = `${reportReady ? getReportRepCount() : bucket.repCount}`;
   elements.matchValue.textContent = `${Math.round(reportReady ? finalMatchScore : displayedScore)}점`;
   elements.issueCount.textContent = `${reportReady ? reportFindings.length : bucket.issueCount}`;
@@ -1596,19 +2084,20 @@ function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
   }
 
   if (liveActive) {
-    maybeSpeak({ ...frame, score: displayedScore }, warningIssue);
+    maybeSpeak(warningIssue, scheduledFeedback, playbackTimeSec);
   }
 }
 
-function showFrame(index) {
+function showFrame(index, options = {}) {
   const clamped = Math.max(0, Math.min(index, getPlaybackFrameCount() - 1));
   const playbackTimeSec = getPlaybackTimeForIndex(clamped);
   const frame = getSourceFrameForPlaybackIndex(clamped);
   state.player.index = clamped;
   state.player.playbackTimeSec = playbackTimeSec;
-  syncUserVideoFrame(frame, playbackTimeSec);
+  syncUserVideoFrame(frame, playbackTimeSec, options.forceUserVideoSeek === true);
   updateFrame(frame, playbackTimeSec);
   updateAvatarScene(frame, playbackTimeSec);
+  updateSessionControls();
 }
 
 function pause() {
@@ -1618,38 +2107,47 @@ function pause() {
   }
   pauseUserVideo();
   state.highlight.active = false;
-  syncHighlightButton();
   state.player.isPlaying = false;
-  elements.playToggle.textContent = "재생";
+  if (elements.playToggle) {
+    elements.playToggle.textContent = "재생";
+  }
+  updateSessionControls();
 }
 
 function play() {
   const initialLastIndex = getPlaybackFrameCount() - 1;
   if (state.session.passIndex >= state.session.totalPasses - 1 && state.player.index >= initialLastIndex) {
     resetSessionProgress();
-    showFrame(0);
+    showFrame(0, { forceUserVideoSeek: true });
   }
   if (state.player.isPlaying) return;
   state.player.isPlaying = true;
   playUserVideo();
-  elements.playToggle.textContent = "일시정지";
+  if (elements.playToggle) {
+    elements.playToggle.textContent = "일시정지";
+  }
+  updateSessionControls();
 
   const intervalMs = 1000 / Math.max(state.player.fps, 1);
   state.player.timerId = window.setInterval(() => {
     const lastIndex = getPlaybackFrameCount() - 1;
+    const syncedIndex = getVideoDrivenPlaybackIndex();
+    const nextIndex = syncedIndex ?? state.player.index + 1;
+
     if (state.player.index >= lastIndex) {
       if (state.session.passIndex < state.session.totalPasses - 1) {
         state.session.passIndex += 1;
         state.highlight.available = true;
-        syncHighlightButton();
-        showFrame(0);
+        showFrame(0, { forceUserVideoSeek: true });
+        playUserVideo();
         return;
       }
       showFrame(lastIndex);
       pause();
       return;
     }
-    showFrame(state.player.index + 1);
+
+    showFrame(nextIndex);
     if (state.highlight.active) {
       if ((state.player.playbackTimeSec || 0) >= state.highlight.endSec) {
         seekToTime(state.highlight.endSec);
@@ -1661,11 +2159,11 @@ function play() {
 
 function seekToTime(timeSec) {
   const targetTimeSec = clamp(timeSec, 0, getPlaybackDurationSec());
-  showFrame(Math.round(targetTimeSec * Math.max(state.player.fps, 1)));
+  showFrame(Math.round(targetTimeSec * Math.max(state.player.fps, 1)), { forceUserVideoSeek: true });
 }
 
 function bindControls() {
-  elements.playToggle.addEventListener("click", () => {
+  elements.playToggle?.addEventListener("click", () => {
     if (state.player.isPlaying) {
       pause();
     } else {
@@ -1673,17 +2171,39 @@ function bindControls() {
     }
   });
 
-  elements.voiceToggle.addEventListener("click", () => {
+  elements.voiceToggle?.addEventListener("click", () => {
     state.voiceEnabled = !state.voiceEnabled;
-    elements.voiceToggle.textContent = state.voiceEnabled ? "음성 안내 켜짐" : "음성 안내 꺼짐";
-    if (!state.voiceEnabled && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+    syncVoiceToggleLabel();
+    if (!state.voiceEnabled) {
       resetVoiceTracking();
+      return;
     }
+    preloadGeneratedVoiceClips();
+    primeSpeechSynthesis(true);
   });
 
   elements.highlightReplay?.addEventListener("click", () => {
     startHighlightPlayback();
+  });
+
+  elements.completeWorkout?.addEventListener("click", () => {
+    flashButton(elements.completeWorkout);
+  });
+
+  elements.cameraSwitch?.addEventListener("click", () => {
+    flashButton(elements.cameraSwitch);
+  });
+
+  elements.nextExercise?.addEventListener("click", () => {
+    flashButton(elements.nextExercise);
+  });
+
+  elements.finishWorkout?.addEventListener("click", () => {
+    showAttendanceAndReturnHome();
+  });
+
+  elements.attendanceHome?.addEventListener("click", () => {
+    showLaunchScreen("home");
   });
 
   window.addEventListener("resize", () => {
@@ -1697,15 +2217,19 @@ function bindControls() {
 }
 
 function revealExerciseSelect() {
-  elements.logoSplash?.classList.add("is-complete");
-  window.setTimeout(() => {
-    elements.exerciseSelect?.classList.add("is-active");
-  }, 260);
+  showLaunchScreen("exercise");
 }
 
 function startAnalysisSession() {
   if (state.hasSessionStarted) return;
   state.hasSessionStarted = true;
+  preloadGeneratedVoiceClips();
+  primeSpeechSynthesis(true);
+
+  if (elements.logoSplash) {
+    elements.logoSplash.hidden = true;
+    elements.logoSplash.classList.remove("is-complete");
+  }
 
   if (elements.correctDemoVideo) {
     elements.correctDemoVideo.pause();
@@ -1713,6 +2237,9 @@ function startAnalysisSession() {
   }
   if (elements.demoView) {
     elements.demoView.hidden = true;
+  }
+  if (elements.attendanceView) {
+    elements.attendanceView.hidden = true;
   }
   if (elements.launchExperience) {
     elements.launchExperience.hidden = true;
@@ -1725,7 +2252,7 @@ function startAnalysisSession() {
   const beginSessionPlayback = () => {
     buildTimeline();
     resetSessionProgress();
-    showFrame(0);
+    showFrame(0, { forceUserVideoSeek: true });
     window.setTimeout(() => {
       if (Number.isFinite(DEBUG_SESSION_OPTIONS.timeSec)) {
         seekToTime(DEBUG_SESSION_OPTIONS.timeSec);
@@ -1755,7 +2282,7 @@ function startAnalysisSession() {
   });
 }
 
-function showReferenceDemo(exerciseName = "스쿼트") {
+function showReferenceDemo(exerciseName = "바벨 스쿼트") {
   state.selectedExerciseName = exerciseName;
   if (elements.demoExerciseName) {
     elements.demoExerciseName.textContent = exerciseName;
@@ -1764,10 +2291,7 @@ function showReferenceDemo(exerciseName = "스쿼트") {
     elements.selectedExerciseName.textContent = exerciseName;
   }
 
-  elements.exerciseSelect?.classList.remove("is-active");
-  if (elements.demoView) {
-    elements.demoView.hidden = false;
-  }
+  showLaunchScreen("trainerLesson");
   if (!elements.correctDemoVideo) {
     startAnalysisSession();
     return;
@@ -1781,12 +2305,15 @@ function showReferenceDemo(exerciseName = "스쿼트") {
 }
 
 function bindLaunchControls() {
+  elements.startWorkout?.addEventListener("click", () => {
+    showLaunchScreen("exercise");
+  });
   elements.exerciseCards?.forEach((card) => {
-    card.addEventListener("click", () => showReferenceDemo(card.dataset.exerciseName || "스쿼트"));
+    card.addEventListener("click", () => showReferenceDemo(card.dataset.exerciseName || "바벨 스쿼트"));
   });
   elements.skipDemo?.addEventListener("click", startAnalysisSession);
   elements.correctDemoVideo?.addEventListener("ended", startAnalysisSession);
-  window.setTimeout(revealExerciseSelect, 1050);
+  showLaunchScreen("home");
 }
 
 async function loadData() {
@@ -1838,7 +2365,11 @@ function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec
 }
 
 async function bootstrap() {
+  setStandaloneUiClass();
   state.data = await loadData();
+  state.attendance = loadAttendanceState();
+  saveAttendanceState();
+  syncAttendanceUi();
   await loadUserOverlayData();
   applyUserVideoTuning();
   state.media.analysisStartSec = state.data?.frames?.[0]?.time_sec || 0;
@@ -1860,6 +2391,29 @@ async function bootstrap() {
 
   bindControls();
   bindLaunchControls();
+  ensureAttendanceCheer();
+  syncVoiceToggleLabel();
+  if ("speechSynthesis" in window) {
+    const primeOnce = () => {
+      primeSpeechSynthesis(true);
+    };
+    window.speechSynthesis.getVoices();
+    getPreferredSpeechVoice();
+    if (typeof window.speechSynthesis.addEventListener === "function") {
+      window.speechSynthesis.addEventListener("voiceschanged", getPreferredSpeechVoice);
+    }
+    window.addEventListener("pointerdown", primeOnce, { once: true, passive: true });
+    window.addEventListener("touchstart", primeOnce, { once: true, passive: true });
+    window.addEventListener("keydown", primeOnce, { once: true });
+  }
+
+  if (DEBUG_SESSION_OPTIONS.autoStart) {
+    if (elements.logoSplash) {
+      elements.logoSplash.hidden = true;
+    }
+  } else {
+    playLaunchSplash();
+  }
 
   if (elements.correctDemoVideo) {
     elements.correctDemoVideo.load();
