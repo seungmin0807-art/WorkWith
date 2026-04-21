@@ -13,7 +13,7 @@
   const QUERY = new URLSearchParams(window.location.search);
   const DEBUG_SKELETON = QUERY.get("debugSkeleton") === "1";
   const DEBUG_RETARGET = QUERY.get("debugRetarget") === "1";
-  const ASSET_VERSION = "20260421-bvh20";
+  const ASSET_VERSION = "20260421-bvh22";
   const TUNING = window.WORKWITH_TUNING || {};
   const AVATAR_TUNING = TUNING.avatar || {};
 
@@ -301,6 +301,7 @@
   };
 
   const LOCK_FEET_TO_GROUND = AVATAR_TUNING.feet?.lockToGround !== false;
+  const FREEZE_FOOT_ROTATION = AVATAR_TUNING.feet?.freezeRotation !== false;
   const KEEP_FEET_FLAT = AVATAR_TUNING.feet?.keepFlat !== false;
   const FOOT_VERTICAL_INFLUENCE = tunedNumber(AVATAR_TUNING.feet?.verticalInfluence, 0.0);
 
@@ -773,6 +774,7 @@
           bone: object,
           restPosition: object.position.clone(),
           restQuaternion: object.quaternion.clone(),
+          restWorldQuaternion: object.getWorldQuaternion(new THREE.Quaternion()),
           restDirectionParent: null,
         };
         bones.set(object.name, entry);
@@ -970,6 +972,7 @@
       const pose = this.computeBvhWorldPose(motion, values);
       rig.group.updateMatrixWorld(true);
       BVH_SEGMENTS_TO_GLB.forEach(([fromName, toName, glbName]) => {
+        if (FREEZE_FOOT_ROTATION && glbName.startsWith("foot.")) return;
         const from = pose.positions.get(fromName);
         const to = pose.positions.get(toName);
         if (!from || !to) return;
@@ -983,6 +986,7 @@
       this.applyShoulderPose(rig);
       this.applyStancePose(rig);
       this.applyHandPose(rig);
+      this.freezeFootWorldRotations(rig);
       rig.group.updateMatrixWorld(true);
       this.lockRigFeetToGround(rig);
       if (DEBUG_RETARGET) {
@@ -1048,6 +1052,7 @@
 
     applyStancePose(rig) {
       Object.entries(STANCE_ROTATION_OFFSETS).forEach(([boneName, rotation]) => {
+        if (FREEZE_FOOT_ROTATION && /^(foot|toe)\./.test(boneName)) return;
         const entry = rig.bones.get(boneName);
         if (!entry) return;
         if (rotation.x) {
@@ -1059,6 +1064,19 @@
         if (rotation.z) {
           entry.bone.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(BVH_AXIS.Z, rotation.z));
         }
+      });
+    }
+
+    freezeFootWorldRotations(rig) {
+      if (!FREEZE_FOOT_ROTATION) return;
+      rig.group.updateMatrixWorld(true);
+      ["foot.L", "foot.R"].forEach((boneName) => {
+        const entry = rig.bones.get(boneName);
+        if (!entry?.restWorldQuaternion) return;
+        const parent = entry.bone.parent || rig.root;
+        const parentWorldQuaternion = parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+        entry.bone.quaternion.copy(parentWorldQuaternion.multiply(entry.restWorldQuaternion));
+        entry.bone.updateMatrixWorld(true);
       });
     }
 

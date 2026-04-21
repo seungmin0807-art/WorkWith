@@ -84,6 +84,8 @@ window.WORKWITH_TUNING = {
 
     feet: {
       lockToGround: true,
+      // Keep foot world rotations fixed while the rest of the leg follows the BVH motion.
+      freezeRotation: true,
       // BVH toe landmarks can tilt upward while standing; keep foot bones close to the floor plane.
       keepFlat: true,
       verticalInfluence: 0.0,
