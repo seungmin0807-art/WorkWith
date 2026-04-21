@@ -14,6 +14,10 @@
     "media/avatar/avatar-animation.mp4",
     "media/avatar/avatar-animation.webm",
   ];
+  const PLAY_DRIFT_TOLERANCE_SEC = 1.0;
+  const PAUSE_DRIFT_TOLERANCE_SEC = 0.04;
+  const MAX_PLAYBACK_RATE = 1.08;
+  const MIN_PLAYBACK_RATE = 0.92;
 
   class AvatarPlayer {
     constructor() {
@@ -23,6 +27,9 @@
       this.ready = false;
       this.playbackDurationSec = 1;
       this._lastSeekSec = -1;
+      this._lastTargetSec = 0;
+      this._isPlaying = false;
+      this._pendingSeekSec = null;
     }
 
     init({ stage, message }) {
@@ -55,6 +62,12 @@
         video.loop = false;
         video.style.cssText =
           "width:100%;height:100%;object-fit:contain;background:#04080d;display:block;";
+        video.addEventListener("canplay", () => {
+          this.flushPendingSeek();
+        });
+        video.addEventListener("loadedmetadata", () => {
+          this.flushPendingSeek();
+        });
 
         const onReady = () => {
           video.removeEventListener("canplaythrough", onReady);
@@ -88,6 +101,8 @@
       const playbackTimeSec = Number.isFinite(options?.playbackTimeSec)
         ? options.playbackTimeSec
         : 0;
+      const isPlaying = options?.isPlaying === true;
+      const forceSeek = options?.forceSeek === true;
       const playbackDurationSec = Number.isFinite(options?.playbackDurationSec)
         ? options.playbackDurationSec
         : this.playbackDurationSec;
@@ -97,17 +112,73 @@
       }
 
       const videoDuration = this.video.duration || 1;
-      const ratio = Math.min(playbackTimeSec / Math.max(playbackDurationSec, 0.001), 1);
+      const ratio = Math.min(Math.max(playbackTimeSec / Math.max(playbackDurationSec, 0.001), 0), 1);
       const targetSec = ratio * videoDuration;
+      this._lastTargetSec = targetSec;
 
-      if (Math.abs(targetSec - this._lastSeekSec) > 0.02) {
-        this.video.currentTime = targetSec;
-        this._lastSeekSec = targetSec;
+      const desiredPlaybackRate = Math.min(
+        MAX_PLAYBACK_RATE,
+        Math.max(MIN_PLAYBACK_RATE, videoDuration / Math.max(playbackDurationSec, 0.001)),
+      );
+      if (Math.abs(this.video.playbackRate - desiredPlaybackRate) > 0.005) {
+        this.video.playbackRate = desiredPlaybackRate;
+        this.video.defaultPlaybackRate = desiredPlaybackRate;
       }
+
+      if (!isPlaying) {
+        this.pauseVideo();
+        if (forceSeek || Math.abs((this.video.currentTime || 0) - targetSec) > PAUSE_DRIFT_TOLERANCE_SEC) {
+          this.seekTo(targetSec);
+        }
+        this._isPlaying = false;
+        return;
+      }
+
+      const currentTime = this.video.currentTime || 0;
+      const driftSec = Math.abs(currentTime - targetSec);
+      if (forceSeek || driftSec > PLAY_DRIFT_TOLERANCE_SEC) {
+        this.seekTo(targetSec);
+      }
+      this.playVideo();
+      this._isPlaying = true;
     }
 
     resize() {
       // Video auto-resizes via CSS
+    }
+
+    seekTo(targetSec) {
+      if (!this.video) return;
+      const clamped = Math.min(Math.max(targetSec, 0), this.video.duration || targetSec || 0);
+      if (!Number.isFinite(clamped)) return;
+      if (this.video.readyState < 2) {
+        this._pendingSeekSec = clamped;
+        return;
+      }
+      if (Math.abs((this.video.currentTime || 0) - clamped) <= 0.01) return;
+      this.video.currentTime = clamped;
+      this._lastSeekSec = clamped;
+      this._pendingSeekSec = null;
+    }
+
+    playVideo() {
+      if (!this.video || !this.video.paused) return;
+      const playPromise = this.video.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {});
+      }
+    }
+
+    pauseVideo() {
+      if (!this.video || this.video.paused) return;
+      this.video.pause();
+    }
+
+    flushPendingSeek() {
+      if (!this.video || this._pendingSeekSec == null || this.video.readyState < 2) return;
+      const pending = this._pendingSeekSec;
+      this._pendingSeekSec = null;
+      this.seekTo(pending);
     }
   }
 

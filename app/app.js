@@ -2437,7 +2437,7 @@ function showFrame(index, options = {}) {
   state.player.playbackTimeSec = playbackTimeSec;
   syncUserVideoFrame(frame, playbackTimeSec, options.forceUserVideoSeek === true);
   updateFrame(frame, playbackTimeSec);
-  updateAvatarScene(frame, playbackTimeSec);
+  updateAvatarScene(frame, playbackTimeSec, options);
   updateSessionControls();
 }
 
@@ -2452,6 +2452,7 @@ function pause() {
   if (elements.playToggle) {
     elements.playToggle.textContent = "재생";
   }
+  updateAvatarScene(state.currentFrame, state.player.playbackTimeSec || 0, { forceAvatarSeek: false });
   updateSessionControls();
 }
 
@@ -2467,6 +2468,7 @@ function play() {
   if (elements.playToggle) {
     elements.playToggle.textContent = "일시정지";
   }
+  updateAvatarScene(state.currentFrame, state.player.playbackTimeSec || 0, { forceAvatarSeek: true });
   updateSessionControls();
 
   const intervalMs = 1000 / Math.max(state.player.fps, 1);
@@ -2766,7 +2768,7 @@ function initAvatarScene() {
   });
 }
 
-function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
+function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0, options = {}) {
   if (!frame || !window.WorkWithAvatarPlayer?.update) return;
   const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
   const highlightedJointNames = getTimedHighlightJointNames(
@@ -2778,6 +2780,8 @@ function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec
     playbackDurationSec: getPlaybackDurationSec(),
     reportReady: isReportPass(),
     highlightedJointNames,
+    isPlaying: state.player.isPlaying === true,
+    forceSeek: options.forceAvatarSeek === true || options.forceUserVideoSeek === true,
   });
 }
 
@@ -2802,7 +2806,7 @@ function initAvatarScene() {
   });
 }
 
-function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
+function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0, options = {}) {
   if (!frame || !window.WorkWithAvatarPlayer?.update) return;
   const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
   const highlightedJointNames = getTimedHighlightJointNames(
@@ -2814,6 +2818,8 @@ function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec
     playbackDurationSec: getPlaybackDurationSec(),
     reportReady: isReportPass(),
     highlightedJointNames,
+    isPlaying: state.player.isPlaying === true,
+    forceSeek: options.forceAvatarSeek === true || options.forceUserVideoSeek === true,
   });
 }
 
