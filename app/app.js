@@ -7,7 +7,6 @@ const HIGHLIGHT_FLASH_DURATION_SEC = 1.08;
 const VOICE_PULSE_SPEAK_WINDOW_SEC = 0.28;
 const VOICE_LOCK_FALLBACK_MS = 1800;
 const MEDIA_CACHE_BUST = "analysis-runtime-v2";
-const AVATAR_FRAME_CACHE_BUST = "avatar-frame-sequence-v1";
 const USER_VIDEO_CACHE_BUST = "user-video-overlay-v2";
 const USER_VIDEO_DRIFT_TOLERANCE_SEC = 0.12;
 const USER_FALLBACK_DURATION_SEC = 14;
@@ -170,8 +169,6 @@ const state = {
   bodyProfile: { ...DEFAULT_BODY_PROFILE },
   bodyProfileEditing: false,
   imageCache: new Map(),
-  avatarFrameCache: new Map(),
-  avatarFrameIndex: -1,
   preloadWindow: 18,
   resizeTimerId: null,
   userOverlay: {
@@ -260,7 +257,6 @@ const elements = {
   userVideo: document.getElementById("userVideo"),
   overlayCanvas: document.getElementById("overlayCanvas"),
   avatarStage: document.getElementById("avatarStage"),
-  avatarFrame: document.getElementById("avatarFrame"),
   avatarMessage: document.getElementById("avatarMessage"),
   currentIssue: document.getElementById("currentIssue"),
   scoreValue: document.getElementById("scoreValue"),
@@ -1677,76 +1673,10 @@ function ensureUserVideoSource() {
   applyCandidate(0);
 }
 
-function withMediaCacheBust(path, version) {
-  if (!path || window.location?.protocol === "file:") return path;
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}v=${version}`;
-}
-
 function getFramePath(index) {
   const media = state.data.media;
   const padded = String(index).padStart(4, "0");
-  const path = `${media.overlay_frame_dir}/${media.overlay_frame_pattern.replace("{index:04d}", padded)}`;
-  return withMediaCacheBust(path, MEDIA_CACHE_BUST);
-}
-
-function getAvatarFrameMedia() {
-  return {
-    dir: state.data?.media?.avatar_frame_dir || "media/avatar-frames",
-    pattern: state.data?.media?.avatar_frame_pattern || "frame_{index:04d}.jpg",
-    count: Number(state.data?.media?.avatar_frame_count) || state.data?.frames?.length || 0,
-  };
-}
-
-function getAvatarFramePath(index) {
-  const media = getAvatarFrameMedia();
-  const clamped = Math.max(0, Math.min(index, Math.max(media.count - 1, 0)));
-  const padded = String(clamped).padStart(4, "0");
-  const path = `${media.dir}/${media.pattern.replace("{index:04d}", padded)}`;
-  return withMediaCacheBust(path, AVATAR_FRAME_CACHE_BUST);
-}
-
-function preloadAvatarFrame(index) {
-  const media = getAvatarFrameMedia();
-  if (!media.count || index < 0 || index >= media.count || state.avatarFrameCache.has(index)) {
-    return;
-  }
-  const image = new Image();
-  image.decoding = "async";
-  image.src = getAvatarFramePath(index);
-  state.avatarFrameCache.set(index, image);
-}
-
-function preloadAvatarFramesAround(index) {
-  const media = getAvatarFrameMedia();
-  if (!media.count) return;
-  const end = Math.min(media.count - 1, index + state.preloadWindow);
-  for (let frameIndex = index; frameIndex <= end; frameIndex += 1) {
-    preloadAvatarFrame(frameIndex);
-  }
-
-  const keepFrom = Math.max(0, index - state.preloadWindow);
-  state.avatarFrameCache.forEach((_, cachedIndex) => {
-    if (cachedIndex < keepFrom || cachedIndex > end + state.preloadWindow) {
-      state.avatarFrameCache.delete(cachedIndex);
-    }
-  });
-}
-
-function setAvatarFrame(index, force = false) {
-  const image = elements.avatarFrame;
-  const media = getAvatarFrameMedia();
-  if (!image || !media.count) return;
-
-  const clamped = Math.max(0, Math.min(Math.round(index), media.count - 1));
-  if (!force && state.avatarFrameIndex === clamped) {
-    preloadAvatarFramesAround(clamped);
-    return;
-  }
-
-  state.avatarFrameIndex = clamped;
-  image.src = getAvatarFramePath(clamped);
-  preloadAvatarFramesAround(clamped);
+  return `${media.overlay_frame_dir}/${media.overlay_frame_pattern.replace("{index:04d}", padded)}?v=${MEDIA_CACHE_BUST}`;
 }
 
 function preloadFrame(index) {
@@ -2751,40 +2681,40 @@ async function loadData() {
 }
 
 function initAvatarScene() {
-  if (state.avatarInitialized || !elements.avatarStage || !elements.avatarFrame) return;
+  if (state.avatarInitialized || !elements.avatarStage || !window.WorkWithAvatarScene?.init) return;
   state.avatarInitialized = true;
-  const media = getAvatarFrameMedia();
-  if (!media.count) {
+  const motionMedia = state.data?.media?.motions || {};
+
+  window.WorkWithAvatarScene.init({
+    stage: elements.avatarStage,
+    message: elements.avatarMessage,
+    data: state.data,
+    modelUrl: motionMedia.avatar_model || "media/avatar/male_base_mesh.glb",
+  }).catch((error) => {
+    console.error(error);
     if (elements.avatarMessage) {
       elements.avatarMessage.hidden = false;
       const title = elements.avatarMessage.querySelector("strong");
       const detail = elements.avatarMessage.querySelector("em");
-      if (title) title.textContent = "아바타 프레임 없음";
-      if (detail) detail.textContent = "저장된 비교 프레임을 확인해주세요.";
+      if (title) title.textContent = "3D 아바타 로딩 실패";
+      if (detail) detail.textContent = "골격 비교 데이터는 계속 재생됩니다.";
     }
-    return;
-  }
-
-  elements.avatarFrame.addEventListener("load", () => {
-    if (elements.avatarMessage) elements.avatarMessage.hidden = true;
-  }, { once: true });
-  elements.avatarFrame.addEventListener("error", () => {
-    if (!elements.avatarMessage) return;
-    elements.avatarMessage.hidden = false;
-    const title = elements.avatarMessage.querySelector("strong");
-    const detail = elements.avatarMessage.querySelector("em");
-    if (title) title.textContent = "아바타 영상 로딩 실패";
-    if (detail) detail.textContent = "저장된 프레임 경로를 확인해주세요.";
   });
-  setAvatarFrame(0, true);
 }
 
 function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
-  if (!frame || !elements.avatarFrame) return;
-  const frameIndex = Number.isFinite(frame.sample_idx)
-    ? frame.sample_idx
-    : Math.round(playbackTimeSec * Math.max(state.player.fps, 1));
-  setAvatarFrame(frameIndex);
+  if (!frame || !window.WorkWithAvatarScene?.update) return;
+  const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
+  const highlightedJointNames = getTimedHighlightJointNames(
+    playbackTimeSec,
+    scheduledFeedback.highlightedJointNames || [],
+  );
+  window.WorkWithAvatarScene.update(frame, {
+    playbackTimeSec,
+    playbackDurationSec: getPlaybackDurationSec(),
+    reportReady: isReportPass(),
+    highlightedJointNames,
+  });
 }
 
 async function bootstrap() {

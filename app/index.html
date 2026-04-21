@@ -21,7 +21,7 @@
   <link rel="manifest" href="manifest.json?v=20260421-ios1">
   <link rel="apple-touch-icon" href="icons/icon.png?v=20260421-logo1">
   <link rel="icon" type="image/png" sizes="1024x1024" href="icons/icon.png?v=20260421-logo1">
-  <link rel="stylesheet" href="styles.css?v=20260422-avatarframes1">
+  <link rel="stylesheet" href="styles.css?v=20260422-fullscreen2">
 </head>
 <body>
   <main id="launchExperience" class="launch-experience is-splashing" aria-label="WorkWith 시작">
@@ -303,12 +303,11 @@
               </div>
             </div>
             <div class="avatar-viewport">
-              <div id="avatarStage" class="avatar-three-stage avatar-frame-stage" aria-label="3D 아바타 비교 영상">
-                <img id="avatarFrame" class="avatar-frame-img" alt="모범 동작과 사용자 동작을 비교하는 저장 프레임 영상">
+              <div id="avatarStage" class="avatar-three-stage" aria-label="3D 모션 비교 화면">
                 <div id="avatarMessage" class="avatar-three-message" aria-live="polite">
-                  <span>FRAME MOTION VIEW</span>
-                  <strong>아바타 영상 준비 중</strong>
-                  <em>저장된 비교 프레임을 불러옵니다.</em>
+                  <span>3D MOTION CAPTURE</span>
+                  <strong>아바타 로딩 중</strong>
+                  <em>BVH 기반 비교 장면을 준비합니다.</em>
                 </div>
               </div>
             </div>
@@ -415,14 +414,18 @@
     </main>
   </div>
 
+  <script src="vendor/three.min.js?v=0.128.0"></script>
+  <script src="vendor/GLTFLoader.js?v=0.128.0"></script>
+  <script src="vendor/SkeletonUtils.js?v=0.128.0"></script>
   <script src="data/session-data.js?v=20260421-retarget1"></script>
   <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
   <script src="tuning.js?v=20260422-camera1"></script>
-  <script src="app.js?v=20260422-avatarframes1"></script>
+  <script src="avatar-scene.js?v=20260422-filefetch1"></script>
+  <script src="app.js?v=20260422-counts1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-avatarframes1").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-filefetch1").catch(() => {});
       });
     }
   </script>
