@@ -34,14 +34,13 @@ jobs:
         run: |
           xcodebuild \
             -project ios/WorkWith.xcodeproj \
-            -scheme WorkWith \
             -resolvePackageDependencies
 
       - name: Build iOS app without code signing
         run: |
           xcodebuild \
             -project ios/WorkWith.xcodeproj \
-            -scheme WorkWith \
+            -target WorkWith \
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
