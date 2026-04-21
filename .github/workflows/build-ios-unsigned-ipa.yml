@@ -40,7 +40,7 @@ jobs:
           set -o pipefail
           xcodebuild \
             -project ios/WorkWith.xcodeproj \
-            -target WorkWith \
+            -scheme WorkWith \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ios/build \
