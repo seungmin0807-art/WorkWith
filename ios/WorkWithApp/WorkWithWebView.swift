@@ -18,6 +18,7 @@ struct WorkWithWebView: UIViewRepresentable {
 
     let webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = context.coordinator
+    webView.uiDelegate = context.coordinator
     webView.scrollView.contentInsetAdjustmentBehavior = .never
     webView.scrollView.bounces = false
     webView.isOpaque = false
@@ -37,7 +38,7 @@ struct WorkWithWebView: UIViewRepresentable {
     webView.loadFileURL(entryURL, allowingReadAccessTo: readAccessURL)
   }
 
-  final class Coordinator: NSObject, WKNavigationDelegate {
+  final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(
       _ webView: WKWebView,
       decidePolicyFor navigationAction: WKNavigationAction,
@@ -61,6 +62,22 @@ struct WorkWithWebView: UIViewRepresentable {
       }
 
       decisionHandler(.allow)
+    }
+
+    @available(iOS 15.0, *)
+    func webView(
+      _ webView: WKWebView,
+      requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+      initiatedByFrame frame: WKFrameInfo,
+      type: WKMediaCaptureType,
+      decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+      switch type {
+      case .camera, .cameraAndMicrophone:
+        decisionHandler(.grant)
+      default:
+        decisionHandler(.prompt)
+      }
     }
   }
 }

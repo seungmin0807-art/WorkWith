@@ -605,6 +605,7 @@ button {
   width: 7px;
   height: 7px;
   border-radius: 50%;
+  box-sizing: border-box;
   display: inline-block;
 }
 
@@ -614,7 +615,8 @@ button {
 }
 
 .dot-white {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(15, 23, 42, 0.82);
 }
 
 .dot-red {
@@ -2299,9 +2301,38 @@ textarea {
       calc(var(--safe-left) + 14px);
   }
 
-  .home-stat-grid,
-  .exercise-grid {
+  .home-stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .exercise-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .exercise-card {
+    border-radius: 22px;
+  }
+
+  .exercise-info {
+    padding: 10px 10px 12px;
+  }
+
+  .exercise-state {
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+  }
+
+  .exercise-info strong {
+    margin-top: 6px;
+    font-size: 0.92rem;
+    line-height: 1.12;
+  }
+
+  .exercise-info em {
+    margin-top: 4px;
+    font-size: 0.7rem;
+    line-height: 1.25;
   }
 
   .body-estimate-layout {

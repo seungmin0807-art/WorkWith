@@ -21,7 +21,7 @@
   <link rel="manifest" href="manifest.json?v=20260421-ios1">
   <link rel="apple-touch-icon" href="icons/icon.png?v=20260421-logo1">
   <link rel="icon" type="image/png" sizes="1024x1024" href="icons/icon.png?v=20260421-logo1">
-  <link rel="stylesheet" href="styles.css?v=20260422-mobilefit2">
+  <link rel="stylesheet" href="styles.css?v=20260422-camera1">
 </head>
 <body>
   <main id="launchExperience" class="launch-experience is-splashing" aria-label="WorkWith 시작">
@@ -230,7 +230,7 @@
     <section id="attendanceView" class="launch-screen attendance-view" hidden aria-label="출석체크">
       <div class="attendance-card">
         <img class="attendance-logo" src="icons/icon-home.png?v=20260421-home-logo1" alt="WorkWith">
-        <p class="eyebrow">출석체크 완료</p>
+        <p class="eyebrow">오늘 운동 완료!</p>
         <h2 id="attendanceHeadline">7일 연속 꾸준한 운동에 성공하셨어요!</h2>
         <button id="attendanceHome" class="primary-action" type="button">홈으로 돌아가기</button>
       </div>
@@ -408,13 +408,13 @@
   <script src="vendor/SkeletonUtils.js?v=0.128.0"></script>
   <script src="data/session-data.js?v=20260421-retarget1"></script>
   <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
-  <script src="tuning.js?v=20260422-avatarzoom1"></script>
+  <script src="tuning.js?v=20260422-camera1"></script>
   <script src="avatar-scene.js?v=20260421-neck1"></script>
-  <script src="app.js?v=20260422-mobilefit2"></script>
+  <script src="app.js?v=20260422-camera1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-mobilefit2").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-camera1").catch(() => {});
       });
     }
   </script>

@@ -17,6 +17,7 @@ const TUNING = window.WORKWITH_TUNING || {};
 const PLAYBACK_TUNING = TUNING.playback || {};
 const USER_OVERLAY_TUNING = TUNING.userOverlay || {};
 const USER_VIDEO_TUNING = TUNING.userVideo || {};
+const CAMERA_KEEPALIVE_TUNING = TUNING.cameraKeepAlive || {};
 
 const PRIMARY_METRIC_IDS = new Set([
   "match_rate",
@@ -167,6 +168,12 @@ const state = {
   session: {
     passIndex: 0,
     totalPasses: 2,
+  },
+  camera: {
+    stream: null,
+    videoElement: null,
+    startPromise: null,
+    stopRequested: false,
   },
   player: {
     isPlaying: false,
@@ -364,14 +371,8 @@ function ensureAttendanceCheer() {
 }
 
 function markWorkoutCompletedToday() {
-  const todayKey = getDeviceLocalDateKey();
-  if (state.attendance.lastCompletedDate === todayKey) {
-    syncAttendanceUi();
-    return false;
-  }
-
   state.attendance.streakDays += 1;
-  state.attendance.lastCompletedDate = todayKey;
+  state.attendance.lastCompletedDate = getDeviceLocalDateKey();
   saveAttendanceState();
   syncAttendanceUi();
   return true;
@@ -937,7 +938,91 @@ function setStandaloneUiClass() {
   document.documentElement.classList.toggle("is-standalone", Boolean(isStandalone));
 }
 
+function getCameraKeepAliveVideo() {
+  if (state.camera.videoElement) {
+    return state.camera.videoElement;
+  }
+
+  const video = document.createElement("video");
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "");
+  video.setAttribute("aria-hidden", "true");
+  video.style.position = "fixed";
+  video.style.left = "-2px";
+  video.style.bottom = "-2px";
+  video.style.width = "1px";
+  video.style.height = "1px";
+  video.style.opacity = "0";
+  video.style.pointerEvents = "none";
+  video.style.zIndex = "-1";
+  document.body.appendChild(video);
+  state.camera.videoElement = video;
+  return video;
+}
+
+function stopCameraKeepAlive() {
+  state.camera.stopRequested = true;
+  if (state.camera.stream) {
+    state.camera.stream.getTracks().forEach((track) => track.stop());
+    state.camera.stream = null;
+  }
+  if (state.camera.videoElement) {
+    state.camera.videoElement.pause();
+    state.camera.videoElement.srcObject = null;
+  }
+}
+
+async function startCameraKeepAlive() {
+  if (state.camera.stream || state.camera.startPromise) {
+    return state.camera.startPromise || state.camera.stream;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return null;
+  }
+
+  state.camera.stopRequested = false;
+  const facingMode = CAMERA_KEEPALIVE_TUNING.facingMode || "user";
+  const constraints = {
+    audio: false,
+    video: {
+      facingMode,
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+    },
+  };
+
+  state.camera.startPromise = navigator.mediaDevices.getUserMedia(constraints)
+    .then((stream) => {
+      if (state.camera.stopRequested) {
+        stream.getTracks().forEach((track) => track.stop());
+        return null;
+      }
+
+      state.camera.stream = stream;
+      const video = getCameraKeepAliveVideo();
+      video.srcObject = stream;
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {});
+      }
+      return stream;
+    })
+    .catch((error) => {
+      console.warn("Camera keep-alive unavailable.", error);
+      return null;
+    })
+    .finally(() => {
+      state.camera.startPromise = null;
+    });
+
+  return state.camera.startPromise;
+}
+
 function showLaunchScreen(screenName) {
+  stopCameraKeepAlive();
+
   const screens = {
     home: elements.homeDashboard,
     exercise: elements.exerciseSelect,
@@ -2233,6 +2318,12 @@ function bindControls() {
       renderPoseOverlayAtTime(elements.userVideo?.currentTime || state.player.playbackTimeSec || 0, true);
     }, 80);
   });
+  window.addEventListener("pagehide", stopCameraKeepAlive);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopCameraKeepAlive();
+    }
+  });
 }
 
 function revealExerciseSelect() {
@@ -2263,6 +2354,7 @@ function startAnalysisSession() {
   if (elements.sessionApp) {
     elements.sessionApp.hidden = false;
   }
+  void startCameraKeepAlive();
   initAvatarScene();
 
   const beginSessionPlayback = () => {
