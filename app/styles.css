@@ -1405,11 +1405,11 @@ body.has-load-error .report-summary {
 
 @media (orientation: landscape) and (max-height: 520px) and (min-width: 700px) {
   .app-shell {
-    overflow: hidden;
+    overflow: auto;
   }
 
   .session-layout {
-    grid-template-columns: minmax(210px, 0.86fr) minmax(240px, 0.96fr) minmax(300px, 1.18fr);
+    grid-template-columns: minmax(180px, 0.86fr) minmax(200px, 0.96fr) minmax(240px, 1.18fr);
   }
 
   .avatar-three-stage {
@@ -2432,6 +2432,7 @@ textarea {
   .app-shell {
     gap: 0;
     grid-template-rows: 1fr;
+    overflow: auto;
     padding:
       max(2px, var(--safe-top))
       max(2px, var(--safe-right))
@@ -2462,7 +2463,7 @@ textarea {
     height: 100%;
     min-height: 0;
     gap: 3px;
-    grid-template-columns: minmax(0, 0.98fr) minmax(0, 1.04fr) minmax(0, 0.98fr);
+    grid-template-columns: minmax(180px, 0.86fr) minmax(200px, 0.96fr) minmax(240px, 1.18fr);
   }
 
   .panel {

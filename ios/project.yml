@@ -12,6 +12,7 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: 16.0
     TARGETED_DEVICE_FAMILY: 1
     GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
     INFOPLIST_KEY_CFBundleDisplayName: WorkWith
     INFOPLIST_KEY_NSCameraUsageDescription: WorkWith는 운동 분석 중 카메라 사용 상태를 표시하기 위해 카메라 권한을 요청합니다.
     INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
