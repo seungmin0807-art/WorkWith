@@ -963,6 +963,7 @@ function showLaunchScreen(screenName) {
 
 function playLaunchSplash() {
   if (!elements.logoSplash) return;
+  elements.launchExperience?.classList.add("is-splashing");
   elements.logoSplash.hidden = false;
   elements.logoSplash.classList.remove("is-complete");
 
@@ -972,11 +973,13 @@ function playLaunchSplash() {
     window.setTimeout(() => {
       if (!elements.logoSplash) return;
       elements.logoSplash.hidden = true;
+      elements.launchExperience?.classList.remove("is-splashing");
     }, 500);
   }, 980);
 }
 
 function dismissLaunchSplash() {
+  elements.launchExperience?.classList.remove("is-splashing");
   if (!elements.logoSplash) return;
   elements.logoSplash.classList.add("is-complete");
   elements.logoSplash.hidden = true;
