@@ -49,20 +49,196 @@
     const barFill = document.getElementById("barFill");
     const startBtn = document.getElementById("startBtn");
     const downloadArea = document.getElementById("downloadArea");
+    const FEEDBACK_INTERVAL_SEC = 3;
+    const HIGHLIGHT_FLASH_DURATION_SEC = 1.08;
+    const DEFAULT_PLAYBACK_DURATION_SEC = 14.47;
+    const ISSUE_HOT_NAMES = {
+      hip_hinge: (side) => [`${side}_hip`, `${side}_knee`],
+      knee_drive: (side) => [`${side}_hip`, `${side}_knee`],
+      balance: () => ["left_hip", "right_hip", "left_knee", "right_knee"],
+      heel_pressure: (side) => [`${side}_hip`, `${side}_knee`],
+      posterior_chain: (side) => [`${side}_hip`, `${side}_knee`],
+    };
+    const HIGHLIGHT_ALLOWED_JOINTS = new Set(["left_hip", "right_hip", "left_knee", "right_knee"]);
 
     let avatarInstance = null;
     let renderConfig = null;
+    let renderData = null;
+    let feedbackSchedule = [];
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function getPlaybackDurationSec(data) {
+      const tuned = Number(window.WORKWITH_TUNING?.playback?.fallbackDurationSec);
+      if (Number.isFinite(tuned) && tuned > 1) return tuned;
+
+      const userDuration = Number(data?.input_videos?.user?.duration_sec);
+      if (Number.isFinite(userDuration) && userDuration > 1 && userDuration < 20) return userDuration;
+
+      return DEFAULT_PLAYBACK_DURATION_SEC;
+    }
+
+    function getSourceFrames() {
+      return renderData?.frames || [];
+    }
+
+    function getSourcePrimarySide() {
+      return renderData?.input_videos?.wrong?.primary_side || "right";
+    }
+
+    function getSourceTimeRange() {
+      const frames = getSourceFrames();
+      if (!frames.length) {
+        return { startSec: 0, endSec: renderConfig?.duration || DEFAULT_PLAYBACK_DURATION_SEC };
+      }
+      return {
+        startSec: Number.isFinite(frames[0]?.time_sec) ? frames[0].time_sec : 0,
+        endSec: Number.isFinite(frames[frames.length - 1]?.time_sec)
+          ? frames[frames.length - 1].time_sec
+          : (renderConfig?.duration || DEFAULT_PLAYBACK_DURATION_SEC),
+      };
+    }
+
+    function mapPlaybackTimeToSourceTime(playbackTimeSec) {
+      const { startSec, endSec } = getSourceTimeRange();
+      const sourceDurationSec = Math.max(0.01, endSec - startSec);
+      const playbackDurationSec = Math.max(renderConfig?.duration || DEFAULT_PLAYBACK_DURATION_SEC, 0.01);
+      const ratio = clamp(playbackTimeSec / playbackDurationSec, 0, 1);
+      return startSec + sourceDurationSec * ratio;
+    }
+
+    function findNearestFrame(sourceTimeSec) {
+      const frames = getSourceFrames();
+      if (!frames.length) return null;
+      let bestFrame = frames[0];
+      let bestDelta = Math.abs((bestFrame.time_sec || 0) - sourceTimeSec);
+      for (let i = 1; i < frames.length; i += 1) {
+        const frame = frames[i];
+        const delta = Math.abs((frame.time_sec || 0) - sourceTimeSec);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          bestFrame = frame;
+        }
+      }
+      return bestFrame;
+    }
+
+    function getHotJointNames(issueId) {
+      if (!issueId) return [];
+      const resolver = ISSUE_HOT_NAMES[issueId];
+      if (!resolver) return [];
+      return resolver(getSourcePrimarySide()).filter((name) => HIGHLIGHT_ALLOWED_JOINTS.has(name));
+    }
+
+    function summarizeIssueWindow(windowFrames) {
+      const issueMap = new Map();
+      (windowFrames || []).forEach((frame) => {
+        (frame.issues || []).forEach((issue) => {
+          const current = issueMap.get(issue.id) || {
+            id: issue.id,
+            label: issue.label,
+            severitySum: 0,
+            count: 0,
+          };
+          current.severitySum += issue.severity || 0;
+          current.count += 1;
+          issueMap.set(issue.id, current);
+        });
+      });
+
+      const topIssue = [...issueMap.values()]
+        .map((issue) => ({
+          id: issue.id,
+          label: issue.label,
+          severity: issue.count ? issue.severitySum / issue.count : 0,
+        }))
+        .sort((a, b) => b.severity - a.severity)[0] || null;
+
+      if (!topIssue) {
+        return {
+          issueId: null,
+          label: "자세 안정 구간",
+          highlightedJointNames: [],
+          severity: 0,
+        };
+      }
+
+      return {
+        issueId: topIssue.id,
+        label: topIssue.label,
+        highlightedJointNames: getHotJointNames(topIssue.id),
+        severity: topIssue.severity,
+      };
+    }
+
+    function buildFeedbackSchedule() {
+      const durationSec = renderConfig?.duration || DEFAULT_PLAYBACK_DURATION_SEC;
+      const frames = getSourceFrames();
+      feedbackSchedule = [];
+      if (!frames.length || !Number.isFinite(durationSec) || durationSec <= 0) return;
+
+      for (let startSec = 0; startSec < durationSec; startSec += FEEDBACK_INTERVAL_SEC) {
+        const endSec = Math.min(durationSec, startSec + FEEDBACK_INTERVAL_SEC);
+        const sourceStartSec = mapPlaybackTimeToSourceTime(startSec);
+        const sourceEndSec = mapPlaybackTimeToSourceTime(endSec);
+        const windowFrames = frames.filter(
+          (frame) => frame.time_sec >= sourceStartSec && frame.time_sec < sourceEndSec + 1e-6,
+        );
+        feedbackSchedule.push({
+          startSec,
+          endSec,
+          ...summarizeIssueWindow(windowFrames),
+        });
+      }
+    }
+
+    function getScheduledFeedback(playbackTimeSec, frame) {
+      if (feedbackSchedule.length) {
+        const windowIndex = Math.min(
+          feedbackSchedule.length - 1,
+          Math.max(0, Math.floor(Math.max(playbackTimeSec, 0) / FEEDBACK_INTERVAL_SEC)),
+        );
+        return feedbackSchedule[windowIndex];
+      }
+
+      const fallbackIssue = (frame?.issues || [])[0] || null;
+      if (!fallbackIssue) {
+        return {
+          issueId: null,
+          label: "자세 안정 구간",
+          highlightedJointNames: [],
+          severity: 0,
+        };
+      }
+
+      return {
+        issueId: fallbackIssue.id,
+        label: fallbackIssue.label,
+        highlightedJointNames: getHotJointNames(fallbackIssue.id),
+        severity: fallbackIssue.severity || 0,
+      };
+    }
+
+    function getTimedHighlightJointNames(playbackTimeSec, names = []) {
+      const phaseSec =
+        ((playbackTimeSec % FEEDBACK_INTERVAL_SEC) + FEEDBACK_INTERVAL_SEC) % FEEDBACK_INTERVAL_SEC;
+      if (phaseSec > HIGHLIGHT_FLASH_DURATION_SEC) return [];
+      return names.filter((name) => HIGHLIGHT_ALLOWED_JOINTS.has(name));
+    }
 
     /* ---- 1. Scene 초기화 ---- */
     (async function () {
       const data = window.__WORKWITH_DATA__ || {};
+      renderData = data;
       const wrongVideo = (data.input_videos || {}).wrong || {};
-      const RENDER_FPS = wrongVideo.sampled_fps || 20;
-      const PLAYBACK_DURATION_SEC = wrongVideo.duration_sec || 14;
-      const TOTAL_FRAMES = Math.ceil(PLAYBACK_DURATION_SEC * RENDER_FPS) + 1;
+      const renderFps = Number(data.overview?.target_fps) || Number(wrongVideo.sampled_fps) || 20;
+      const playbackDurationSec = getPlaybackDurationSec(data);
+      const totalFrames = Math.max(2, Math.floor(playbackDurationSec * renderFps) + 1);
 
-      renderConfig = { fps: RENDER_FPS, duration: PLAYBACK_DURATION_SEC, totalFrames: TOTAL_FRAMES };
-      // Puppeteer 호환
+      renderConfig = { fps: renderFps, duration: playbackDurationSec, totalFrames };
+      buildFeedbackSchedule();
       window.__RENDER_CONFIG__ = renderConfig;
 
       try {
@@ -70,7 +246,7 @@
         avatarInstance = await window.WorkWithAvatarScene.init({
           stage: document.getElementById("avatarStage"),
           message: document.getElementById("avatarMessage"),
-          data: data,
+          data,
           modelUrl:
             (data.media && data.media.motions && data.media.motions.avatar_model) ||
             "media/avatar/male_base_mesh.glb",
@@ -78,7 +254,8 @@
 
         window.__avatarInstance__ = avatarInstance;
         window.__RENDER_READY__ = true;
-        progressEl.textContent = `준비 완료 — ${TOTAL_FRAMES} 프레임 (${RENDER_FPS}fps, ${PLAYBACK_DURATION_SEC.toFixed(1)}초)`;
+        progressEl.textContent =
+          `준비 완료 — ${totalFrames} 프레임 (${renderFps}fps, ${playbackDurationSec.toFixed(2)}초)`;
         startBtn.disabled = false;
       } catch (e) {
         window.__RENDER_ERROR__ = e.message || String(e);
@@ -90,10 +267,26 @@
     /* ---- 2. 프레임 렌더링 함수 (Puppeteer에서도 사용) ---- */
     window.renderFrame = function (index) {
       if (!avatarInstance || !renderConfig) return false;
-      const timeSec = index / renderConfig.fps;
+      const playbackTimeSec = clamp(index / renderConfig.fps, 0, renderConfig.duration);
+      const sourceTimeSec = mapPlaybackTimeToSourceTime(playbackTimeSec);
+      const sourceFrame = findNearestFrame(sourceTimeSec) || {
+        time_sec: sourceTimeSec,
+        issues: [],
+        highlighted_joint_names: [],
+      };
+      const scheduledFeedback = getScheduledFeedback(playbackTimeSec, sourceFrame);
+      const highlightedJointNames = getTimedHighlightJointNames(
+        playbackTimeSec,
+        scheduledFeedback.highlightedJointNames || sourceFrame.highlighted_joint_names || [],
+      );
+
       window.WorkWithAvatarScene.update(
-        { time_sec: timeSec },
-        { playbackTimeSec: timeSec, playbackDurationSec: renderConfig.duration, highlightedJointNames: [] }
+        { ...sourceFrame, time_sec: sourceTimeSec },
+        {
+          playbackTimeSec,
+          playbackDurationSec: renderConfig.duration,
+          highlightedJointNames,
+        },
       );
       avatarInstance.renderer.render(avatarInstance.scene, avatarInstance.camera);
       return true;
@@ -105,42 +298,51 @@
       startBtn.disabled = true;
 
       const canvas = document.querySelector("#avatarStage canvas");
-      if (!canvas) { progressEl.textContent = "캔버스를 찾을 수 없습니다."; return; }
+      if (!canvas) {
+        progressEl.textContent = "캔버스를 찾을 수 없습니다.";
+        return;
+      }
 
       const fps = renderConfig.fps;
       const totalFrames = renderConfig.totalFrames;
 
-      // MediaRecorder로 WebM 녹화
-      const stream = canvas.captureStream(0); // 0 = manual frame capture
+      const stream = canvas.captureStream(0);
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
         ? "video/webm;codecs=vp9"
         : "video/webm";
       const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
       const chunks = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
 
       recorder.start();
+      const captureStartMs = performance.now();
 
-      for (let i = 0; i < totalFrames; i++) {
+      for (let i = 0; i < totalFrames; i += 1) {
         renderFrame(i);
 
-        // MediaRecorder에 현재 프레임을 전달
         if (stream.getVideoTracks()[0].requestFrame) {
           stream.getVideoTracks()[0].requestFrame();
         }
 
-        // fps에 맞게 대기 (실시간보다 약간 느리게 — 녹화 품질 보장)
-        await new Promise((r) => setTimeout(r, 1000 / fps));
+        const targetNextMs = captureStartMs + ((i + 1) * 1000) / fps;
+        const waitMs = targetNextMs - performance.now();
+        if (waitMs > 0) {
+          await new Promise((r) => setTimeout(r, waitMs));
+        }
 
-        // 진행률 표시
-        const pct = ((i + 1) / totalFrames * 100).toFixed(0);
-        barFill.style.width = pct + "%";
-        progressEl.textContent = `렌더링 중... ${i + 1} / ${totalFrames} (${pct}%)`;
+        if (i % 4 === 0 || i === totalFrames - 1) {
+          const pct = ((i + 1) / totalFrames * 100).toFixed(0);
+          barFill.style.width = pct + "%";
+          progressEl.textContent = `렌더링 중... ${i + 1} / ${totalFrames} (${pct}%)`;
+        }
       }
 
-      // 녹화 종료
       recorder.stop();
-      await new Promise((r) => { recorder.onstop = r; });
+      await new Promise((r) => {
+        recorder.onstop = r;
+      });
 
       const blob = new Blob(chunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
@@ -158,8 +360,6 @@
       link.className = "dl";
       link.textContent = "avatar-animation.webm 다운로드";
       downloadArea.appendChild(link);
-
-      // 자동 다운로드
       link.click();
     });
   </script>
