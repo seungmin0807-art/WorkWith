@@ -30,14 +30,14 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate --spec ios/project.yml --project ios
 
-      - name: Resolve Swift package dependencies
+      - name: Inspect generated project
         run: |
-          xcodebuild \
-            -project ios/WorkWith.xcodeproj \
-            -resolvePackageDependencies
+          mkdir -p ios/artifact
+          xcodebuild -list -project ios/WorkWith.xcodeproj | tee ios/artifact/project-list.txt
 
       - name: Build iOS app without code signing
         run: |
+          set -o pipefail
           xcodebuild \
             -project ios/WorkWith.xcodeproj \
             -target WorkWith \
@@ -49,7 +49,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            build
+            build | tee ios/artifact/build.log
 
       - name: Package unsigned IPA artifact
         run: |
@@ -75,11 +75,14 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent ios/artifact/Payload ios/artifact/WorkWith-unsigned.ipa
 
       - name: Upload unsigned IPA artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: WorkWith-unsigned-ipa
           path: |
             ios/artifact/WorkWith-unsigned.ipa
             ios/artifact/INSTALL.txt
+            ios/artifact/project-list.txt
+            ios/artifact/build.log
           if-no-files-found: error
           retention-days: 7
