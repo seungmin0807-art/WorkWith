@@ -70,6 +70,14 @@
       return Math.min(max, Math.max(min, value));
     }
 
+    function normalizeRenderFps(value) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric) || numeric <= 0) return 30;
+      const rounded = Math.round(numeric);
+      if (Math.abs(numeric - rounded) < 0.02) return rounded;
+      return Math.round(numeric * 1000) / 1000;
+    }
+
     function getPlaybackDurationSec(data) {
       const tuned = Number(window.WORKWITH_TUNING?.playback?.fallbackDurationSec);
       if (Number.isFinite(tuned) && tuned > 1) return tuned;
@@ -233,13 +241,7 @@
       const data = window.__WORKWITH_DATA__ || {};
       renderData = data;
       const wrongVideo = (data.input_videos || {}).wrong || {};
-      const renderFps = Number(data.overview?.target_fps) || Number(wrongVideo.sampled_fps) || 20;
       const playbackDurationSec = getPlaybackDurationSec(data);
-      const totalFrames = Math.max(2, Math.floor(playbackDurationSec * renderFps) + 1);
-
-      renderConfig = { fps: renderFps, duration: playbackDurationSec, totalFrames };
-      buildFeedbackSchedule();
-      window.__RENDER_CONFIG__ = renderConfig;
 
       try {
         progressEl.textContent = "3D 모델 + BVH 모션 로딩 중...";
@@ -251,6 +253,20 @@
             (data.media && data.media.motions && data.media.motions.avatar_model) ||
             "media/avatar/male_base_mesh.glb",
         });
+
+        const renderFps = normalizeRenderFps(
+          avatarInstance?.motion?.user?.fps ||
+          avatarInstance?.motion?.reference?.fps ||
+          Number(wrongVideo.fps) ||
+          Number(data.overview?.target_fps) ||
+          Number(wrongVideo.sampled_fps) ||
+          30,
+        );
+        const totalFrames = Math.max(2, Math.floor(playbackDurationSec * renderFps) + 1);
+
+        renderConfig = { fps: renderFps, duration: playbackDurationSec, totalFrames };
+        buildFeedbackSchedule();
+        window.__RENDER_CONFIG__ = renderConfig;
 
         window.__avatarInstance__ = avatarInstance;
         window.__RENDER_READY__ = true;

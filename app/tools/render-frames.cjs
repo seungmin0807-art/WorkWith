@@ -25,9 +25,34 @@ const { execSync } = require("child_process");
 
 const FRAME_SIZE = 480;
 const FRAMES_DIR = path.resolve(__dirname, "_frames");
+const RENDER_CONFIG_PATH = path.join(FRAMES_DIR, "render-config.json");
 const MP4_PATH = path.resolve(__dirname, "..", "media", "avatar", "avatar-animation.mp4");
 
 /* ---------- tiny static file server ---------- */
+
+function resolveChromeExecutable() {
+  const candidates = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROME_PATH,
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || undefined;
+}
+
+function hasFfmpeg() {
+  try {
+    execSync("ffmpeg -version", { stdio: "ignore" });
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
 
 function createServer(root) {
   const MIME = {
@@ -71,8 +96,10 @@ function createServer(root) {
   console.log(`[render] Static server on http://127.0.0.1:${PORT}`);
 
   // 2. Launch headless browser
+  const executablePath = resolveChromeExecutable();
   const browser = await puppeteer.launch({
     headless: "new",
+    executablePath,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -111,6 +138,18 @@ function createServer(root) {
 
   // 5. Render each frame
   fs.mkdirSync(FRAMES_DIR, { recursive: true });
+  fs.writeFileSync(
+    RENDER_CONFIG_PATH,
+    JSON.stringify(
+      {
+        ...config,
+        width: FRAME_SIZE,
+        height: FRAME_SIZE,
+      },
+      null,
+      2,
+    ),
+  );
 
   for (let i = 0; i < config.totalFrames; i++) {
     await page.evaluate(`window.renderFrame(${i})`);
@@ -139,6 +178,13 @@ function createServer(root) {
   server.close();
 
   // 6. Encode to MP4
+  if (!hasFfmpeg()) {
+    console.log("[render] ffmpeg not found. PNG frames were preserved for external encoding.");
+    console.log(`[render] Frame directory: ${FRAMES_DIR}`);
+    console.log(`[render] Config file: ${RENDER_CONFIG_PATH}`);
+    return;
+  }
+
   console.log("[render] Encoding MP4 ...");
   fs.mkdirSync(path.dirname(MP4_PATH), { recursive: true });
   execSync(
@@ -157,6 +203,10 @@ function createServer(root) {
   console.log(`[render] MP4 saved: ${MP4_PATH} (${(stats.size / 1024).toFixed(0)} KB)`);
 
   // 7. Clean up temp frames
-  fs.rmSync(FRAMES_DIR, { recursive: true, force: true });
+  if (process.env.KEEP_RENDER_FRAMES === "1") {
+    console.log(`[render] KEEP_RENDER_FRAMES=1, preserving ${FRAMES_DIR}`);
+  } else {
+    fs.rmSync(FRAMES_DIR, { recursive: true, force: true });
+  }
   console.log("[render] Done.");
 })();
