@@ -1537,9 +1537,7 @@ textarea {
     calc(var(--safe-left) + 18px);
   overflow-x: hidden;
   overflow-y: auto;
-  background:
-    linear-gradient(180deg, rgba(10, 132, 255, 0.08), transparent 28%),
-    linear-gradient(180deg, #ffffff 0%, #f3f7fc 68%, #e9eff8 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f3f7fc 68%, #e9eff8 100%);
 }
 
 .launch-experience.is-splashing {
