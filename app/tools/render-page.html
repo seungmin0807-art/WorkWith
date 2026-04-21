@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base href="../">
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #04080d; overflow: hidden; }
+  #avatarStage { width: 480px; height: 480px; }
+  #avatarMessage { display: none; }
+</style>
+</head>
+<body>
+  <div id="avatarStage">
+    <div id="avatarMessage" hidden><strong></strong><em></em></div>
+  </div>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="vendor/GLTFLoader.js"></script>
+  <script src="vendor/SkeletonUtils.js"></script>
+  <script src="data/session-data.js"></script>
+  <script src="tuning.js"></script>
+  <script src="avatar-scene.js"></script>
+  <script>
+    (async function () {
+      var data = window.__WORKWITH_DATA__ || {};
+      var wrongVideo = (data.input_videos || {}).wrong || {};
+      var RENDER_FPS = wrongVideo.sampled_fps || 20;
+      var PLAYBACK_DURATION_SEC = wrongVideo.duration_sec || 14;
+      var TOTAL_FRAMES = Math.ceil(PLAYBACK_DURATION_SEC * RENDER_FPS) + 1;
+
+      window.__RENDER_CONFIG__ = {
+        fps: RENDER_FPS,
+        duration: PLAYBACK_DURATION_SEC,
+        totalFrames: TOTAL_FRAMES,
+      };
+
+      try {
+        var instance = await window.WorkWithAvatarScene.init({
+          stage: document.getElementById("avatarStage"),
+          message: document.getElementById("avatarMessage"),
+          data: data,
+          modelUrl:
+            (data.media && data.media.motions && data.media.motions.avatar_model) ||
+            "media/avatar/male_base_mesh.glb",
+        });
+
+        window.__avatarInstance__ = instance;
+        window.__RENDER_READY__ = true;
+      } catch (e) {
+        window.__RENDER_ERROR__ = e.message || String(e);
+      }
+    })();
+
+    /**
+     * Puppeteer calls this for each frame index.
+     * Updates the BVH pose and forces a render pass.
+     */
+    window.renderFrame = function (index) {
+      var cfg = window.__RENDER_CONFIG__;
+      var inst = window.__avatarInstance__;
+      if (!inst || !cfg) return false;
+
+      var timeSec = index / cfg.fps;
+      window.WorkWithAvatarScene.update(
+        { time_sec: timeSec },
+        {
+          playbackTimeSec: timeSec,
+          playbackDurationSec: cfg.duration,
+          highlightedJointNames: [],
+        }
+      );
+      // Force synchronous render so the canvas is ready for capture
+      inst.renderer.render(inst.scene, inst.camera);
+      return true;
+    };
+  </script>
+</body>
+</html>

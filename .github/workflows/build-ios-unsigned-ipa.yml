@@ -24,8 +24,8 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen and ffmpeg
+        run: brew install xcodegen ffmpeg
 
       - name: Prepare iOS app icon assets
         run: |
@@ -48,6 +48,23 @@ jobs:
           sips -z 120 120 "$ICON_SRC" --out "$ICON_DIR/AppIcon-120-large.png" >/dev/null
           sips -z 180 180 "$ICON_SRC" --out "$ICON_DIR/AppIcon-180.png" >/dev/null
           sips -z 1024 1024 "$ICON_SRC" --out "$ICON_DIR/AppIcon-1024.png" >/dev/null
+
+      - name: Set up Node.js for avatar rendering
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Render avatar animation video
+        run: |
+          cd app/tools
+          npm init -y
+          npm install puppeteer
+          node render-frames.cjs
+
+      - name: Verify avatar video
+        run: |
+          ls -lh app/media/avatar/avatar-animation.mp4
+          file app/media/avatar/avatar-animation.mp4
 
       # Copy the web app INTO the ios project tree so XcodeGen can
       # include it as a folder-reference resource — no Run Script needed.

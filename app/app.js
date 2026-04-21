@@ -2681,9 +2681,31 @@ async function loadData() {
 }
 
 function initAvatarScene() {
-  if (state.avatarInitialized || !elements.avatarStage || !window.WorkWithAvatarScene?.init) return;
+  if (state.avatarInitialized || !elements.avatarStage) return;
   state.avatarInitialized = true;
   const motionMedia = state.data?.media?.motions || {};
+
+  const usePrerendered =
+    window.location?.protocol === "file:" && window.WorkWithAvatarPlayer?.init;
+
+  if (usePrerendered) {
+    window.WorkWithAvatarPlayer.init({
+      stage: elements.avatarStage,
+      message: elements.avatarMessage,
+    }).catch((error) => {
+      console.error(error);
+      if (elements.avatarMessage) {
+        elements.avatarMessage.hidden = false;
+        const title = elements.avatarMessage.querySelector("strong");
+        const detail = elements.avatarMessage.querySelector("em");
+        if (title) title.textContent = "아바타 영상 로드 실패";
+        if (detail) detail.textContent = "골격 비교 데이터는 계속 재생됩니다.";
+      }
+    });
+    return;
+  }
+
+  if (!window.WorkWithAvatarScene?.init) return;
 
   window.WorkWithAvatarScene.init({
     stage: elements.avatarStage,
@@ -2703,18 +2725,24 @@ function initAvatarScene() {
 }
 
 function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
-  if (!frame || !window.WorkWithAvatarScene?.update) return;
+  if (!frame) return;
   const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
   const highlightedJointNames = getTimedHighlightJointNames(
     playbackTimeSec,
     scheduledFeedback.highlightedJointNames || [],
   );
-  window.WorkWithAvatarScene.update(frame, {
+  const opts = {
     playbackTimeSec,
     playbackDurationSec: getPlaybackDurationSec(),
     reportReady: isReportPass(),
     highlightedJointNames,
-  });
+  };
+
+  if (window.location?.protocol === "file:" && window.WorkWithAvatarPlayer?.update) {
+    window.WorkWithAvatarPlayer.update(frame, opts);
+  } else if (window.WorkWithAvatarScene?.update) {
+    window.WorkWithAvatarScene.update(frame, opts);
+  }
 }
 
 async function bootstrap() {
