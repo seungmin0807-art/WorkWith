@@ -15,12 +15,6 @@ settings:
     INFOPLIST_KEY_CFBundleDisplayName: WorkWith
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_STYLE: Automatic
-    SWIFT_OBJC_BRIDGING_HEADER: WorkWithApp/WorkWithApp-Bridging-Header.h
-    HEADER_SEARCH_PATHS:
-      - $(inherited)
-      - $(SRCROOT)/Vendor/GCDWebServer/Core
-      - $(SRCROOT)/Vendor/GCDWebServer/Requests
-      - $(SRCROOT)/Vendor/GCDWebServer/Responses
 
 targets:
   WorkWith:
@@ -31,15 +25,8 @@ targets:
       - path: WorkWithApp
         excludes:
           - Assets.xcassets
-      - path: Vendor/GCDWebServer/Core
-      - path: Vendor/GCDWebServer/Requests
-      - path: Vendor/GCDWebServer/Responses
     resources:
       - path: WorkWithApp/Assets.xcassets
-    dependencies:
-      - sdk: libz.tbd
-      - sdk: CoreServices.framework
-      - sdk: CFNetwork.framework
     preBuildScripts:
       - name: Bundle Web App
         basedOnDependencyAnalysis: false

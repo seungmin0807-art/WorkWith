@@ -3,7 +3,8 @@ import UIKit
 import WebKit
 
 struct WorkWithWebView: UIViewRepresentable {
-  let url: URL
+  let entryURL: URL
+  let readAccessURL: URL
 
   func makeCoordinator() -> Coordinator {
     Coordinator()
@@ -27,23 +28,13 @@ struct WorkWithWebView: UIViewRepresentable {
       webView.isInspectable = true
     }
 
-    let request = URLRequest(
-      url: url,
-      cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
-      timeoutInterval: 60
-    )
-    webView.load(request)
+    webView.loadFileURL(entryURL, allowingReadAccessTo: readAccessURL)
     return webView
   }
 
   func updateUIView(_ webView: WKWebView, context: Context) {
-    guard webView.url != url else { return }
-    let request = URLRequest(
-      url: url,
-      cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
-      timeoutInterval: 60
-    )
-    webView.load(request)
+    guard webView.url != entryURL else { return }
+    webView.loadFileURL(entryURL, allowingReadAccessTo: readAccessURL)
   }
 
   final class Coordinator: NSObject, WKNavigationDelegate {
@@ -58,7 +49,7 @@ struct WorkWithWebView: UIViewRepresentable {
       }
 
       let host = requestURL.host?.lowercased()
-      if host == "127.0.0.1" || host == "localhost" || requestURL.scheme == "about" {
+      if requestURL.isFileURL || host == "127.0.0.1" || host == "localhost" || requestURL.scheme == "about" {
         decisionHandler(.allow)
         return
       }

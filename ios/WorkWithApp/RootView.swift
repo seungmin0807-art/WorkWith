@@ -1,39 +1,32 @@
 import SwiftUI
 
 struct RootView: View {
-  @StateObject private var localServer = LocalWebServer()
+  private let bundledWebApp = BundledWebApp.locate()
 
   var body: some View {
     ZStack {
       Color.black
         .ignoresSafeArea()
 
-      if let launchURL = localServer.launchURL {
-        WorkWithWebView(url: launchURL)
+      if let bundledWebApp {
+        WorkWithWebView(
+          entryURL: bundledWebApp.entryURL,
+          readAccessURL: bundledWebApp.readAccessURL
+        )
           .ignoresSafeArea()
       } else {
         VStack(spacing: 16) {
-          ProgressView()
-            .tint(.white)
+          Image(systemName: "exclamationmark.triangle.fill")
+            .font(.system(size: 30, weight: .semibold))
+            .foregroundStyle(.yellow)
 
-          Text(localServer.errorMessage ?? "WorkWith를 준비 중입니다.")
+          Text("번들된 WorkWith 웹앱을 찾지 못했습니다.")
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(.white.opacity(0.88))
             .multilineTextAlignment(.center)
             .padding(.horizontal, 24)
-
-          if localServer.errorMessage != nil {
-            Button("다시 시도") {
-              localServer.restart()
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.blue)
-          }
         }
       }
-    }
-    .task {
-      localServer.startIfNeeded()
     }
   }
 }
