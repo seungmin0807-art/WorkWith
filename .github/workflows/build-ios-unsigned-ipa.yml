@@ -48,7 +48,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
-            build | tee ios/artifact/build.log
+            build 2>&1 | tee ios/artifact/build.log
 
       - name: Emit build failure excerpt
         if: failure()
