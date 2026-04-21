@@ -713,9 +713,14 @@
       }
 
       const loader = new THREE.GLTFLoader();
+      const url = this.withCacheBust(this.modelUrl);
+      const response = await fetch(url);
+      const buffer = await response.arrayBuffer();
+
       await new Promise((resolve, reject) => {
-        loader.load(
-          this.withCacheBust(this.modelUrl),
+        loader.parse(
+          buffer,
+          "",
           (gltf) => {
             const source = gltf.scene;
             this.rigs.reference = this.createRig(source, "reference");
@@ -723,7 +728,6 @@
             this.scene.add(this.rigs.reference.group, this.rigs.user.group);
             resolve();
           },
-          undefined,
           reject,
         );
       });
