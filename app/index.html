@@ -21,7 +21,7 @@
   <link rel="manifest" href="manifest.json?v=20260421-ios1">
   <link rel="apple-touch-icon" href="icons/icon.png?v=20260421-logo1">
   <link rel="icon" type="image/png" sizes="1024x1024" href="icons/icon.png?v=20260421-logo1">
-  <link rel="stylesheet" href="styles.css?v=20260422-camera1">
+  <link rel="stylesheet" href="styles.css?v=20260422-bodyprofile1">
 </head>
 <body>
   <main id="launchExperience" class="launch-experience is-splashing" aria-label="WorkWith 시작">
@@ -42,11 +42,6 @@
           <span>연속 운동</span>
           <strong id="streakCount">6일</strong>
           <em>꾸준함이 쌓이고 있어요</em>
-        </article>
-        <article class="home-stat-card">
-          <span>내 몸상태</span>
-          <strong>좋음</strong>
-          <em>무릎 부담 낮음 · 하체 준비 완료</em>
         </article>
       </div>
 
@@ -69,7 +64,7 @@
             <p class="section-label">현재 내 몸상태 추정</p>
             <h3>힘과 밸런스가 함께 올라온 상태</h3>
           </div>
-          <span>오늘 기준</span>
+          <button id="bodyEstimateEdit" class="body-estimate-edit" type="button">내 몸상태 수정</button>
         </div>
         <div class="body-estimate-layout">
           <div class="body-estimate-figure" aria-hidden="true">
@@ -131,21 +126,37 @@
             <img class="body-estimate-avatar-img" src="media/exercises/05-bodybuilding-front-pose.png?v=20260422-exercise-assets" alt="">
           </div>
           <div class="body-estimate-stats">
-            <article class="body-estimate-stat">
+            <article class="body-estimate-stat" data-body-field="height">
               <span>키</span>
-              <strong>176.3cm</strong>
+              <strong id="bodyHeightValue">176.3cm</strong>
+              <label class="body-estimate-editor" hidden>
+                <input id="bodyHeightInput" type="number" inputmode="decimal" step="0.1" min="80" max="240" aria-label="키 입력">
+                <em>cm</em>
+              </label>
             </article>
-            <article class="body-estimate-stat">
+            <article class="body-estimate-stat" data-body-field="weight">
               <span>몸무게</span>
-              <strong>101.2kg</strong>
+              <strong id="bodyWeightValue">101.2kg</strong>
+              <label class="body-estimate-editor" hidden>
+                <input id="bodyWeightInput" type="number" inputmode="decimal" step="0.1" min="20" max="250" aria-label="몸무게 입력">
+                <em>kg</em>
+              </label>
             </article>
-            <article class="body-estimate-stat">
+            <article class="body-estimate-stat" data-body-field="muscle">
               <span>골격근량</span>
-              <strong>47kg</strong>
+              <strong id="bodyMuscleValue">47kg</strong>
+              <label class="body-estimate-editor" hidden>
+                <input id="bodyMuscleInput" type="number" inputmode="decimal" step="0.1" min="5" max="90" aria-label="골격근량 입력">
+                <em>kg</em>
+              </label>
             </article>
-            <article class="body-estimate-stat">
+            <article class="body-estimate-stat" data-body-field="fat">
               <span>체지방</span>
-              <strong>18%</strong>
+              <strong id="bodyFatValue">18%</strong>
+              <label class="body-estimate-editor" hidden>
+                <input id="bodyFatInput" type="number" inputmode="decimal" step="0.1" min="1" max="60" aria-label="체지방 입력">
+                <em>%</em>
+              </label>
             </article>
           </div>
         </div>
@@ -410,11 +421,11 @@
   <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
   <script src="tuning.js?v=20260422-camera1"></script>
   <script src="avatar-scene.js?v=20260421-neck1"></script>
-  <script src="app.js?v=20260422-camera1"></script>
+  <script src="app.js?v=20260422-bodyprofile1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-camera1").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-bodyprofile1").catch(() => {});
       });
     }
   </script>

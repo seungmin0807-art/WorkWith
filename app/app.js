@@ -11,7 +11,14 @@ const USER_VIDEO_CACHE_BUST = "user-video-overlay-v2";
 const USER_VIDEO_DRIFT_TOLERANCE_SEC = 0.12;
 const USER_FALLBACK_DURATION_SEC = 14;
 const ATTENDANCE_STORAGE_KEY = "workwith-attendance-v1";
+const BODY_PROFILE_STORAGE_KEY = "workwith-body-profile-v1";
 const DEFAULT_STREAK_DAYS = 6;
+const DEFAULT_BODY_PROFILE = Object.freeze({
+  height: 176.3,
+  weight: 101.2,
+  muscle: 47,
+  fat: 18,
+});
 const DEBUG_SESSION_OPTIONS = parseDebugSessionOptions();
 const TUNING = window.WORKWITH_TUNING || {};
 const PLAYBACK_TUNING = TUNING.playback || {};
@@ -151,6 +158,8 @@ const state = {
     streakDays: DEFAULT_STREAK_DAYS,
     lastCompletedDate: null,
   },
+  bodyProfile: { ...DEFAULT_BODY_PROFILE },
+  bodyProfileEditing: false,
   imageCache: new Map(),
   preloadWindow: 18,
   resizeTimerId: null,
@@ -219,6 +228,16 @@ const elements = {
   squatStart: document.getElementById("squatStart"),
   exerciseCards: document.querySelectorAll(".exercise-card[data-exercise-name]"),
   streakCount: document.getElementById("streakCount"),
+  bodyEstimateCard: document.querySelector(".body-estimate-card"),
+  bodyEstimateEdit: document.getElementById("bodyEstimateEdit"),
+  bodyHeightValue: document.getElementById("bodyHeightValue"),
+  bodyWeightValue: document.getElementById("bodyWeightValue"),
+  bodyMuscleValue: document.getElementById("bodyMuscleValue"),
+  bodyFatValue: document.getElementById("bodyFatValue"),
+  bodyHeightInput: document.getElementById("bodyHeightInput"),
+  bodyWeightInput: document.getElementById("bodyWeightInput"),
+  bodyMuscleInput: document.getElementById("bodyMuscleInput"),
+  bodyFatInput: document.getElementById("bodyFatInput"),
   demoExerciseName: document.getElementById("demoExerciseName"),
   selectedExerciseName: document.getElementById("selectedExerciseName"),
   skipDemo: document.getElementById("skipDemo"),
@@ -347,6 +366,132 @@ function saveAttendanceState() {
   } catch (error) {
     console.warn("Unable to save attendance state.", error);
   }
+}
+
+function normalizeBodyProfileValue(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return clamp(parsed, min, max);
+}
+
+function loadBodyProfileState() {
+  const fallback = { ...DEFAULT_BODY_PROFILE };
+  if (typeof window === "undefined" || !window.localStorage) {
+    return fallback;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(BODY_PROFILE_STORAGE_KEY);
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      height: normalizeBodyProfileValue(parsed?.height, fallback.height, 80, 240),
+      weight: normalizeBodyProfileValue(parsed?.weight, fallback.weight, 20, 250),
+      muscle: normalizeBodyProfileValue(parsed?.muscle, fallback.muscle, 5, 90),
+      fat: normalizeBodyProfileValue(parsed?.fat, fallback.fat, 1, 60),
+    };
+  } catch (error) {
+    console.warn("Unable to load body profile state.", error);
+    return fallback;
+  }
+}
+
+function saveBodyProfileState() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(BODY_PROFILE_STORAGE_KEY, JSON.stringify(state.bodyProfile));
+  } catch (error) {
+    console.warn("Unable to save body profile state.", error);
+  }
+}
+
+function formatBodyProfileNumber(value) {
+  const fixed = Number(value).toFixed(1);
+  return fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed;
+}
+
+function setBodyInputValue(input, value) {
+  if (!input) return;
+  input.value = Number(value).toFixed(1);
+}
+
+function syncBodyProfileUi() {
+  const profile = state.bodyProfile;
+  if (elements.bodyHeightValue) {
+    elements.bodyHeightValue.textContent = `${formatBodyProfileNumber(profile.height)}cm`;
+  }
+  if (elements.bodyWeightValue) {
+    elements.bodyWeightValue.textContent = `${formatBodyProfileNumber(profile.weight)}kg`;
+  }
+  if (elements.bodyMuscleValue) {
+    elements.bodyMuscleValue.textContent = `${formatBodyProfileNumber(profile.muscle)}kg`;
+  }
+  if (elements.bodyFatValue) {
+    elements.bodyFatValue.textContent = `${formatBodyProfileNumber(profile.fat)}%`;
+  }
+
+  setBodyInputValue(elements.bodyHeightInput, profile.height);
+  setBodyInputValue(elements.bodyWeightInput, profile.weight);
+  setBodyInputValue(elements.bodyMuscleInput, profile.muscle);
+  setBodyInputValue(elements.bodyFatInput, profile.fat);
+}
+
+function setBodyProfileEditing(isEditing) {
+  state.bodyProfileEditing = Boolean(isEditing);
+  elements.bodyEstimateCard?.classList.toggle("is-editing", state.bodyProfileEditing);
+  if (elements.bodyEstimateEdit) {
+    elements.bodyEstimateEdit.textContent = state.bodyProfileEditing ? "수정 완료" : "내 몸상태 수정";
+  }
+
+  const displayValues = [
+    elements.bodyHeightValue,
+    elements.bodyWeightValue,
+    elements.bodyMuscleValue,
+    elements.bodyFatValue,
+  ];
+  const editors = document.querySelectorAll(".body-estimate-editor");
+  displayValues.forEach((element) => {
+    if (element) element.hidden = state.bodyProfileEditing;
+  });
+  editors.forEach((element) => {
+    element.hidden = !state.bodyProfileEditing;
+  });
+
+  if (state.bodyProfileEditing) {
+    elements.bodyHeightInput?.focus();
+    elements.bodyHeightInput?.select();
+  }
+}
+
+function readBodyProfileInputs() {
+  const current = state.bodyProfile;
+  return {
+    height: normalizeBodyProfileValue(elements.bodyHeightInput?.value, current.height, 80, 240),
+    weight: normalizeBodyProfileValue(elements.bodyWeightInput?.value, current.weight, 20, 250),
+    muscle: normalizeBodyProfileValue(elements.bodyMuscleInput?.value, current.muscle, 5, 90),
+    fat: normalizeBodyProfileValue(elements.bodyFatInput?.value, current.fat, 1, 60),
+  };
+}
+
+function toggleBodyProfileEditor() {
+  if (!state.bodyProfileEditing) {
+    syncBodyProfileUi();
+    setBodyProfileEditing(true);
+    return;
+  }
+
+  state.bodyProfile = readBodyProfileInputs();
+  saveBodyProfileState();
+  syncBodyProfileUi();
+  setBodyProfileEditing(false);
 }
 
 function syncAttendanceUi() {
@@ -2422,6 +2567,7 @@ function bindLaunchControls() {
   elements.startWorkout?.addEventListener("click", () => {
     showLaunchScreen("exercise");
   });
+  elements.bodyEstimateEdit?.addEventListener("click", toggleBodyProfileEditor);
   elements.exerciseCards?.forEach((card) => {
     card.addEventListener("click", () => showReferenceDemo(card.dataset.exerciseName || "바벨 스쿼트"));
   });
@@ -2482,8 +2628,11 @@ async function bootstrap() {
   setStandaloneUiClass();
   state.data = await loadData();
   state.attendance = loadAttendanceState();
+  state.bodyProfile = loadBodyProfileState();
   saveAttendanceState();
   syncAttendanceUi();
+  syncBodyProfileUi();
+  setBodyProfileEditing(false);
   await loadUserOverlayData().catch((error) => {
     console.warn("User overlay disabled.", error);
     state.userOverlay.data = null;
