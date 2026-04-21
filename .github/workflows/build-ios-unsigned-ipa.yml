@@ -51,22 +51,28 @@ jobs:
           sips -z 180 180 "$ICON_SRC" --out "$ICON_DIR/AppIcon-180.png" >/dev/null
           sips -z 1024 1024 "$ICON_SRC" --out "$ICON_DIR/AppIcon-1024.png" >/dev/null
 
-      - name: Set up Node.js for avatar rendering
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Render avatar animation video
+      - name: Prepare avatar video for iOS
         run: |
-          cd app/tools
-          npm init -y
-          npm install puppeteer
-          node render-frames.cjs
+          set -euo pipefail
+          mkdir -p app/media/avatar
 
-      - name: Verify avatar video
-        run: |
-          ls -lh app/media/avatar/avatar-animation.mp4
-          file app/media/avatar/avatar-animation.mp4
+          if [ -f app/media/avatar/avatar-animation.webm ]; then
+            ffmpeg -y \
+              -i app/media/avatar/avatar-animation.webm \
+              -c:v libx264 \
+              -pix_fmt yuv420p \
+              -movflags +faststart \
+              app/media/avatar/avatar-animation.mp4
+          fi
+
+          if [ ! -f app/media/avatar/avatar-animation.mp4 ] && [ ! -f app/media/avatar/avatar-animation.webm ]; then
+            echo "::error::Missing avatar animation source (mp4/webm)"
+            exit 1
+          fi
+
+          ls -lh app/media/avatar/avatar-animation.*
+          file app/media/avatar/avatar-animation.mp4 || true
+          file app/media/avatar/avatar-animation.webm || true
 
       # Copy the web app INTO the ios project tree so XcodeGen can
       # include it as a folder-reference resource — no Run Script needed.
