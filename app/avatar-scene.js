@@ -13,7 +13,7 @@
   const QUERY = new URLSearchParams(window.location.search);
   const DEBUG_SKELETON = QUERY.get("debugSkeleton") === "1";
   const DEBUG_RETARGET = QUERY.get("debugRetarget") === "1";
-  const ASSET_VERSION = "20260421-bvh13";
+  const ASSET_VERSION = "20260421-bvh14";
   const TUNING = window.WORKWITH_TUNING || {};
   const AVATAR_TUNING = TUNING.avatar || {};
 
@@ -223,12 +223,29 @@
     "toe.R": { x: -tunedNumber(AVATAR_TUNING.stance?.toeSpread, 0.03) },
   };
 
+  const SHOULDER_POSITION_OFFSETS = {
+    "shoulder.L": {
+      x: tunedNumber(AVATAR_TUNING.shoulders?.widthOffset, 0.03),
+    },
+    "shoulder.R": {
+      x: -tunedNumber(AVATAR_TUNING.shoulders?.widthOffset, 0.03),
+    },
+    "upper_arm.L": {
+      x: tunedNumber(AVATAR_TUNING.shoulders?.armRootOffset, 0.012),
+    },
+    "upper_arm.R": {
+      x: -tunedNumber(AVATAR_TUNING.shoulders?.armRootOffset, 0.012),
+    },
+  };
+
   const STANCE_ROTATION_OFFSETS = {
     "foot.L": { y: -tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) },
     "foot.R": { y: tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) },
     "toe.L": { y: -tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) * 0.72 },
     "toe.R": { y: tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) * 0.72 },
   };
+
+  const LOCK_FEET_TO_GROUND = AVATAR_TUNING.feet?.lockToGround !== false;
 
   const BVH_SEGMENTS_TO_GLB = [
     ["hips", "Chest", "spine"],
@@ -641,6 +658,7 @@
         bones,
         baseMaterials,
         highlightRegions,
+        footAnchorBaseWorld: null,
       };
     }
 
@@ -893,7 +911,7 @@
       );
 
       const pose = this.computeBvhWorldPose(motion, values);
-      rig.root.updateMatrixWorld(true);
+      rig.group.updateMatrixWorld(true);
       BVH_SEGMENTS_TO_GLB.forEach(([fromName, toName, glbName]) => {
         const from = pose.positions.get(fromName);
         const to = pose.positions.get(toName);
@@ -903,9 +921,11 @@
         if (direction.lengthSq() <= 1e-8) return;
         this.pointBoneToward(rig, glbName, direction.normalize());
       });
+      this.applyShoulderPose(rig);
       this.applyStancePose(rig);
       this.applyHandPose(rig);
-      rig.root.updateMatrixWorld(true);
+      rig.group.updateMatrixWorld(true);
+      this.lockRigFeetToGround(rig);
       if (DEBUG_RETARGET) {
         this.writeRetargetDebug(rig, motion, frameIndex);
       }
@@ -940,6 +960,18 @@
       });
     }
 
+    applyShoulderPose(rig) {
+      Object.entries(SHOULDER_POSITION_OFFSETS).forEach(([boneName, offset]) => {
+        const entry = rig.bones.get(boneName);
+        if (!entry) return;
+        entry.bone.position.set(
+          entry.restPosition.x + (offset.x || 0),
+          entry.restPosition.y + (offset.y || 0),
+          entry.restPosition.z + (offset.z || 0),
+        );
+      });
+    }
+
     applyStancePose(rig) {
       Object.entries(STANCE_POSITION_OFFSETS).forEach(([boneName, offset]) => {
         const entry = rig.bones.get(boneName);
@@ -966,6 +998,48 @@
       });
     }
 
+    getFootAnchorWorld(rig) {
+      const points = [];
+      [
+        "foot.L",
+        "foot.R",
+        "toe.L",
+        "toe.R",
+        "heel.02.L",
+        "heel.02.R",
+      ].forEach((boneName) => {
+        const entry = rig.bones.get(boneName);
+        if (!entry) return;
+        const point = new THREE.Vector3();
+        entry.bone.getWorldPosition(point);
+        points.push(point);
+      });
+      if (!points.length) {
+        return null;
+      }
+
+      const anchor = new THREE.Vector3();
+      points.forEach((point) => anchor.add(point));
+      anchor.multiplyScalar(1 / points.length);
+      anchor.y = Math.min(...points.map((point) => point.y));
+      return anchor;
+    }
+
+    lockRigFeetToGround(rig) {
+      if (!LOCK_FEET_TO_GROUND) return;
+      const currentAnchorWorld = this.getFootAnchorWorld(rig);
+      if (!currentAnchorWorld) return;
+
+      if (!rig.footAnchorBaseWorld) {
+        rig.footAnchorBaseWorld = currentAnchorWorld.clone();
+        return;
+      }
+
+      const delta = currentAnchorWorld.sub(rig.footAnchorBaseWorld);
+      rig.group.position.sub(delta);
+      rig.group.updateMatrixWorld(true);
+    }
+
     writeRetargetDebug(rig, motion, frameIndex) {
       if (!this.stage) return;
       const prefix = rig.role === "reference" ? "reference" : "user";
@@ -978,6 +1052,14 @@
       this.stage.dataset[`${prefix}RightKnee`] = this.measureBoneAngle(rig, "thigh.R", "shin.R", "foot.R");
       this.stage.dataset[`${prefix}LeftElbow`] = this.measureBoneAngle(rig, "upper_arm.L", "forearm.L", "hand.L");
       this.stage.dataset[`${prefix}RightElbow`] = this.measureBoneAngle(rig, "upper_arm.R", "forearm.R", "hand.R");
+      const footAnchor = this.getFootAnchorWorld(rig);
+      if (footAnchor) {
+        this.stage.dataset[`${prefix}FootAnchor`] = [
+          footAnchor.x.toFixed(4),
+          footAnchor.y.toFixed(4),
+          footAnchor.z.toFixed(4),
+        ].join(",");
+      }
     }
 
     measureBoneAngle(rig, aName, bName, cName) {

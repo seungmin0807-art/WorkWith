@@ -62,12 +62,21 @@ window.WORKWITH_TUNING = {
       },
     },
 
+    shoulders: {
+      widthOffset: 0.04,
+      armRootOffset: 0.016,
+    },
+
     // Widen the stance from the lower legs / feet only so the pelvis does not look wider.
     stance: {
       shinSpread: 0.0,
       footSpread: 0.125,
       toeSpread: 0.08,
       toeTurnY: 0.3,
+    },
+
+    feet: {
+      lockToGround: true,
     },
 
     // Hand / wrist shaping. Increase wristBackBendX if you want more backward bend.
