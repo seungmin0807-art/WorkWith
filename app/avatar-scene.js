@@ -425,7 +425,12 @@
       const originalFetch = window.fetch.bind(window);
       window.__WORKWITH_FILE_FETCH_PATCHED__ = true;
       window.fetch = async (...args) => {
-        const response = await originalFetch(...args);
+        let response;
+        try {
+          response = await originalFetch(...args);
+        } catch (error) {
+          throw error;
+        }
         if (!response.ok && response.status === 0) {
           return new Response(await response.blob(), {
             status: 200,
@@ -542,6 +547,23 @@
           reject(new Error(`Could not load BVH avatar motion: ${sourceUrl}`));
         };
         request.onerror = () => reject(new Error(`Could not load BVH avatar motion: ${sourceUrl}`));
+        request.send();
+      });
+    }
+
+    fetchBinaryWithXhr(url) {
+      return new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open("GET", url, true);
+        request.responseType = "arraybuffer";
+        request.onload = () => {
+          if ((request.status >= 200 && request.status < 300) || request.status === 0) {
+            resolve(request.response);
+            return;
+          }
+          reject(new Error("Could not load model: " + url));
+        };
+        request.onerror = () => reject(new Error("Could not load model: " + url));
         request.send();
       });
     }
@@ -714,8 +736,13 @@
 
       const loader = new THREE.GLTFLoader();
       const url = this.withCacheBust(this.modelUrl);
-      const response = await fetch(url);
-      const buffer = await response.arrayBuffer();
+      let buffer;
+      try {
+        const response = await fetch(url);
+        buffer = await response.arrayBuffer();
+      } catch (_fetchError) {
+        buffer = await this.fetchBinaryWithXhr(url);
+      }
 
       await new Promise((resolve, reject) => {
         loader.parse(
