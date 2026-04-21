@@ -3,16 +3,39 @@
 <head>
 <base href="../">
 <meta charset="UTF-8">
+<title>WorkWith Avatar Renderer</title>
 <style>
-  * { margin: 0; padding: 0; }
-  body { background: #04080d; overflow: hidden; }
-  #avatarStage { width: 480px; height: 480px; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; color: #eee; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 24px; }
+  h2 { margin-bottom: 12px; }
+  #avatarStage { width: 480px; height: 480px; border: 1px solid #333; }
   #avatarMessage { display: none; }
+  #ui { margin-top: 16px; text-align: center; }
+  #progress { margin: 12px 0; font-size: 14px; color: #aaa; }
+  #bar { width: 480px; height: 8px; background: #222; border-radius: 4px; overflow: hidden; margin: 8px 0; }
+  #barFill { width: 0%; height: 100%; background: #4fc3f7; transition: width 0.1s; }
+  button { padding: 10px 28px; font-size: 15px; border: none; border-radius: 6px; cursor: pointer; background: #4fc3f7; color: #111; font-weight: 600; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  a.dl { display: inline-block; margin-top: 12px; padding: 10px 28px; background: #66bb6a; color: #111; border-radius: 6px; text-decoration: none; font-weight: 600; }
+  .note { margin-top: 16px; font-size: 13px; color: #888; max-width: 480px; line-height: 1.6; }
 </style>
 </head>
 <body>
+  <h2>WorkWith Avatar Renderer</h2>
   <div id="avatarStage">
     <div id="avatarMessage" hidden><strong></strong><em></em></div>
+  </div>
+  <div id="ui">
+    <div id="bar"><div id="barFill"></div></div>
+    <div id="progress">로딩 중...</div>
+    <button id="startBtn" disabled>렌더링 시작</button>
+    <div id="downloadArea"></div>
+  </div>
+  <div class="note">
+    <b>사용법:</b> app 폴더에서 <code>python -m http.server 8080</code> 실행 후
+    Chrome에서 <code>http://localhost:8080/tools/render-page.html</code>을 엽니다.<br>
+    렌더링이 끝나면 다운로드 버튼이 나타납니다. 다운받은 파일을
+    <code>app/media/avatar/avatar-animation.webm</code>에 저장하세요.
   </div>
 
   <script src="vendor/three.min.js"></script>
@@ -22,21 +45,29 @@
   <script src="tuning.js"></script>
   <script src="avatar-scene.js"></script>
   <script>
-    (async function () {
-      var data = window.__WORKWITH_DATA__ || {};
-      var wrongVideo = (data.input_videos || {}).wrong || {};
-      var RENDER_FPS = wrongVideo.sampled_fps || 20;
-      var PLAYBACK_DURATION_SEC = wrongVideo.duration_sec || 14;
-      var TOTAL_FRAMES = Math.ceil(PLAYBACK_DURATION_SEC * RENDER_FPS) + 1;
+    const progressEl = document.getElementById("progress");
+    const barFill = document.getElementById("barFill");
+    const startBtn = document.getElementById("startBtn");
+    const downloadArea = document.getElementById("downloadArea");
 
-      window.__RENDER_CONFIG__ = {
-        fps: RENDER_FPS,
-        duration: PLAYBACK_DURATION_SEC,
-        totalFrames: TOTAL_FRAMES,
-      };
+    let avatarInstance = null;
+    let renderConfig = null;
+
+    /* ---- 1. Scene 초기화 ---- */
+    (async function () {
+      const data = window.__WORKWITH_DATA__ || {};
+      const wrongVideo = (data.input_videos || {}).wrong || {};
+      const RENDER_FPS = wrongVideo.sampled_fps || 20;
+      const PLAYBACK_DURATION_SEC = wrongVideo.duration_sec || 14;
+      const TOTAL_FRAMES = Math.ceil(PLAYBACK_DURATION_SEC * RENDER_FPS) + 1;
+
+      renderConfig = { fps: RENDER_FPS, duration: PLAYBACK_DURATION_SEC, totalFrames: TOTAL_FRAMES };
+      // Puppeteer 호환
+      window.__RENDER_CONFIG__ = renderConfig;
 
       try {
-        var instance = await window.WorkWithAvatarScene.init({
+        progressEl.textContent = "3D 모델 + BVH 모션 로딩 중...";
+        avatarInstance = await window.WorkWithAvatarScene.init({
           stage: document.getElementById("avatarStage"),
           message: document.getElementById("avatarMessage"),
           data: data,
@@ -45,35 +76,92 @@
             "media/avatar/male_base_mesh.glb",
         });
 
-        window.__avatarInstance__ = instance;
+        window.__avatarInstance__ = avatarInstance;
         window.__RENDER_READY__ = true;
+        progressEl.textContent = `준비 완료 — ${TOTAL_FRAMES} 프레임 (${RENDER_FPS}fps, ${PLAYBACK_DURATION_SEC.toFixed(1)}초)`;
+        startBtn.disabled = false;
       } catch (e) {
         window.__RENDER_ERROR__ = e.message || String(e);
+        progressEl.textContent = "오류: " + (e.message || e);
+        progressEl.style.color = "#ef5350";
       }
     })();
 
-    /**
-     * Puppeteer calls this for each frame index.
-     * Updates the BVH pose and forces a render pass.
-     */
+    /* ---- 2. 프레임 렌더링 함수 (Puppeteer에서도 사용) ---- */
     window.renderFrame = function (index) {
-      var cfg = window.__RENDER_CONFIG__;
-      var inst = window.__avatarInstance__;
-      if (!inst || !cfg) return false;
-
-      var timeSec = index / cfg.fps;
+      if (!avatarInstance || !renderConfig) return false;
+      const timeSec = index / renderConfig.fps;
       window.WorkWithAvatarScene.update(
         { time_sec: timeSec },
-        {
-          playbackTimeSec: timeSec,
-          playbackDurationSec: cfg.duration,
-          highlightedJointNames: [],
-        }
+        { playbackTimeSec: timeSec, playbackDurationSec: renderConfig.duration, highlightedJointNames: [] }
       );
-      // Force synchronous render so the canvas is ready for capture
-      inst.renderer.render(inst.scene, inst.camera);
+      avatarInstance.renderer.render(avatarInstance.scene, avatarInstance.camera);
       return true;
     };
+
+    /* ---- 3. 자동 렌더링 + WebM 녹화 ---- */
+    startBtn.addEventListener("click", async () => {
+      if (!avatarInstance || !renderConfig) return;
+      startBtn.disabled = true;
+
+      const canvas = document.querySelector("#avatarStage canvas");
+      if (!canvas) { progressEl.textContent = "캔버스를 찾을 수 없습니다."; return; }
+
+      const fps = renderConfig.fps;
+      const totalFrames = renderConfig.totalFrames;
+
+      // MediaRecorder로 WebM 녹화
+      const stream = canvas.captureStream(0); // 0 = manual frame capture
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : "video/webm";
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+      recorder.start();
+
+      for (let i = 0; i < totalFrames; i++) {
+        renderFrame(i);
+
+        // MediaRecorder에 현재 프레임을 전달
+        if (stream.getVideoTracks()[0].requestFrame) {
+          stream.getVideoTracks()[0].requestFrame();
+        }
+
+        // fps에 맞게 대기 (실시간보다 약간 느리게 — 녹화 품질 보장)
+        await new Promise((r) => setTimeout(r, 1000 / fps));
+
+        // 진행률 표시
+        const pct = ((i + 1) / totalFrames * 100).toFixed(0);
+        barFill.style.width = pct + "%";
+        progressEl.textContent = `렌더링 중... ${i + 1} / ${totalFrames} (${pct}%)`;
+      }
+
+      // 녹화 종료
+      recorder.stop();
+      await new Promise((r) => { recorder.onstop = r; });
+
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+
+      progressEl.textContent = `완료! ${totalFrames} 프레임, ${sizeMB} MB`;
+      progressEl.style.color = "#66bb6a";
+      barFill.style.width = "100%";
+      barFill.style.background = "#66bb6a";
+
+      downloadArea.innerHTML = "";
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "avatar-animation.webm";
+      link.className = "dl";
+      link.textContent = "avatar-animation.webm 다운로드";
+      downloadArea.appendChild(link);
+
+      // 자동 다운로드
+      link.click();
+    });
   </script>
 </body>
 </html>

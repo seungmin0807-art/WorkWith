@@ -30,6 +30,8 @@ jobs:
       - name: Prepare iOS app icon assets
         run: |
           set -euo pipefail
+          echo "--- Checking icon file ---"
+          ls -la app/icons/ || true
           ICON_SRC="app/icons/icon.png"
           ICON_DIR="ios/WorkWithApp/Assets.xcassets/AppIcon.appiconset"
 

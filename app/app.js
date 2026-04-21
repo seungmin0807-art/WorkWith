@@ -2781,6 +2781,42 @@ function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec
   });
 }
 
+function initAvatarScene() {
+  if (state.avatarInitialized || !elements.avatarStage) return;
+  state.avatarInitialized = true;
+
+  if (!window.WorkWithAvatarPlayer?.init) return;
+
+  window.WorkWithAvatarPlayer.init({
+    stage: elements.avatarStage,
+    message: elements.avatarMessage,
+  }).catch((error) => {
+    console.error(error);
+    if (elements.avatarMessage) {
+      elements.avatarMessage.hidden = false;
+      const title = elements.avatarMessage.querySelector("strong");
+      const detail = elements.avatarMessage.querySelector("em");
+      if (title) title.textContent = "아바타 영상 로드 실패";
+      if (detail) detail.textContent = "골격 비교 데이터는 계속 재생됩니다.";
+    }
+  });
+}
+
+function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
+  if (!frame || !window.WorkWithAvatarPlayer?.update) return;
+  const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
+  const highlightedJointNames = getTimedHighlightJointNames(
+    playbackTimeSec,
+    scheduledFeedback.highlightedJointNames || [],
+  );
+  window.WorkWithAvatarPlayer.update(frame, {
+    playbackTimeSec,
+    playbackDurationSec: getPlaybackDurationSec(),
+    reportReady: isReportPass(),
+    highlightedJointNames,
+  });
+}
+
 async function bootstrap() {
   setStandaloneUiClass();
   state.data = await loadData();
