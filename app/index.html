@@ -12,13 +12,6 @@
   <title>WorkWith</title>
   <script>
     (function () {
-      if (location.protocol !== "file:") return;
-      const previewUrl = "http://127.0.0.1:8000/";
-      location.replace(previewUrl + (location.hash || ""));
-    })();
-  </script>
-  <script>
-    (function () {
       const isStandalone =
         window.navigator.standalone === true ||
         window.matchMedia("(display-mode: standalone)").matches;
@@ -414,13 +407,14 @@
   <script src="vendor/GLTFLoader.js?v=0.128.0"></script>
   <script src="vendor/SkeletonUtils.js?v=0.128.0"></script>
   <script src="data/session-data.js?v=20260421-retarget1"></script>
+  <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
   <script src="tuning.js?v=20260421-neck2"></script>
   <script src="avatar-scene.js?v=20260421-neck1"></script>
-  <script src="app.js?v=20260422-voice1"></script>
+  <script src="app.js?v=20260422-pwa1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-attendance1").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-pwa1").catch(() => {});
       });
     }
   </script>

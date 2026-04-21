@@ -194,6 +194,7 @@ const state = {
     startSec: 4,
     endSec: 8,
   },
+  launchControlsBound: false,
   feedback: {
     schedule: [],
   },
@@ -975,6 +976,12 @@ function playLaunchSplash() {
   }, 980);
 }
 
+function dismissLaunchSplash() {
+  if (!elements.logoSplash) return;
+  elements.logoSplash.classList.add("is-complete");
+  elements.logoSplash.hidden = true;
+}
+
 function flashButton(button) {
   if (!button) return;
   button.classList.remove("is-tapped");
@@ -1131,18 +1138,27 @@ function getUserOverlayFrameAtTime(timeSec) {
   return index >= 0 ? getUserOverlayFrames()[index] : null;
 }
 
+function applyLoadedUserOverlayData(data) {
+  state.userOverlay.data = data || null;
+  const overlayDurationSec = Number(state.userOverlay.data?.duration_sec);
+  if (Number.isFinite(overlayDurationSec) && overlayDurationSec > 0) {
+    state.media.userVideoDurationSec = overlayDurationSec;
+  }
+}
+
 async function loadUserOverlayData() {
+  if (window.__WORKWITH_USER_OVERLAY__) {
+    applyLoadedUserOverlayData(window.__WORKWITH_USER_OVERLAY__);
+    return;
+  }
+
   const response = await fetch(buildMediaUrl(USER_OVERLAY_TUNING.dataPath || "data/user-overlay-analysis.json", USER_VIDEO_CACHE_BUST), {
     cache: "no-store",
   });
   if (!response.ok) {
     throw new Error("사용자 MediaPipe 오버레이 데이터를 불러오지 못했습니다.");
   }
-  state.userOverlay.data = await response.json();
-  const overlayDurationSec = Number(state.userOverlay.data?.duration_sec);
-  if (Number.isFinite(overlayDurationSec) && overlayDurationSec > 0) {
-    state.media.userVideoDurationSec = overlayDurationSec;
-  }
+  applyLoadedUserOverlayData(await response.json());
 }
 
 function applyUserVideoTuning() {
@@ -2226,10 +2242,7 @@ function startAnalysisSession() {
   preloadGeneratedVoiceClips();
   primeSpeechSynthesis(true);
 
-  if (elements.logoSplash) {
-    elements.logoSplash.hidden = true;
-    elements.logoSplash.classList.remove("is-complete");
-  }
+  dismissLaunchSplash();
 
   if (elements.correctDemoVideo) {
     elements.correctDemoVideo.pause();
@@ -2305,6 +2318,12 @@ function showReferenceDemo(exerciseName = "바벨 스쿼트") {
 }
 
 function bindLaunchControls() {
+  if (state.launchControlsBound) {
+    showLaunchScreen("home");
+    return;
+  }
+  state.launchControlsBound = true;
+
   elements.startWorkout?.addEventListener("click", () => {
     showLaunchScreen("exercise");
   });
@@ -2370,7 +2389,10 @@ async function bootstrap() {
   state.attendance = loadAttendanceState();
   saveAttendanceState();
   syncAttendanceUi();
-  await loadUserOverlayData();
+  await loadUserOverlayData().catch((error) => {
+    console.warn("User overlay disabled.", error);
+    state.userOverlay.data = null;
+  });
   applyUserVideoTuning();
   state.media.analysisStartSec = state.data?.frames?.[0]?.time_sec || 0;
   state.media.analysisEndSec = state.data?.frames?.[state.data.frames.length - 1]?.time_sec || USER_FALLBACK_DURATION_SEC;
@@ -2408,9 +2430,7 @@ async function bootstrap() {
   }
 
   if (DEBUG_SESSION_OPTIONS.autoStart) {
-    if (elements.logoSplash) {
-      elements.logoSplash.hidden = true;
-    }
+    dismissLaunchSplash();
   } else {
     playLaunchSplash();
   }
@@ -2440,6 +2460,8 @@ async function bootstrap() {
 bootstrap().catch((error) => {
   console.error(error);
   document.body.classList.add("has-load-error");
+  dismissLaunchSplash();
+  bindLaunchControls();
   elements.summaryText.textContent = error.message;
   elements.coachText.textContent = "세션 데이터를 불러오지 못했습니다.";
   elements.medicalDetail.textContent = error.message;

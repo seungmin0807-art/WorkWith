@@ -1,4 +1,4 @@
-const CACHE_VERSION = "workwith-ios-pwa-v10";
+const CACHE_VERSION = "workwith-ios-pwa-v11";
 const CORE_CACHE = `${CACHE_VERSION}-core`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -12,6 +12,7 @@ const CORE_ASSETS = [
   "./manifest.json",
   "./data/session-data.js",
   "./data/session-data.json",
+  "./data/user-overlay-analysis.js",
   "./data/user-overlay-analysis.json",
   "./vendor/three.min.js",
   "./vendor/GLTFLoader.js",
@@ -20,6 +21,8 @@ const CORE_ASSETS = [
   "./icons/icon-180.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/icon-home.png",
+  "./icons/icon-splash.png",
   "./media/exercises/01-barbell-back-squat.png",
   "./media/exercises/02-conventional-deadlift.png",
   "./media/exercises/03-forward-lunge.png",
