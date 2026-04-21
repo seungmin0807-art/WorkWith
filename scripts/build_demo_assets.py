@@ -4,6 +4,8 @@ import argparse
 import json
 import math
 import os
+import shutil
+import struct
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +20,7 @@ from scipy.signal import find_peaks, savgol_filter
 from tqdm import tqdm
 
 
-TARGET_FPS = 10.0
+TARGET_FPS = 20.0
 MODEL_NAME = "MediaPipe Pose"
 EXERCISE_NAME = "Barbell Back Squat"
 MODEL_URL = (
@@ -383,7 +385,7 @@ def detect_pose_sequence(video_path: Path, role: str, target_fps: float) -> dict
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-    sample_interval = max(int(round(fps / target_fps)), 1) if fps else 3
+    sample_interval = fps / target_fps if fps and target_fps > 0 else 1.0
 
     frames: list[FrameResult] = []
     detector = vision.PoseLandmarker.create_from_options(
@@ -407,9 +409,11 @@ def detect_pose_sequence(video_path: Path, role: str, target_fps: float) -> dict
         if not ok:
             break
 
-        if frame_idx % sample_interval == 0:
+        target_frame_idx = int(round(sampled_index * sample_interval))
+        if frame_idx == target_frame_idx:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            timestamp_ms = int((frame_idx / fps) * 1000.0) if fps else sampled_index * int(1000 / max(target_fps, 1))
+            sample_time_sec = sampled_index / max(target_fps, 1.0)
+            timestamp_ms = int(sample_time_sec * 1000.0)
             image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             result = detector.detect_for_video(image, timestamp_ms)
 
@@ -421,7 +425,7 @@ def detect_pose_sequence(video_path: Path, role: str, target_fps: float) -> dict
                     FrameResult(
                         frame_idx=frame_idx,
                         sample_idx=sampled_index,
-                        time_sec=frame_idx / fps if fps else sampled_index / target_fps,
+                        time_sec=sample_time_sec,
                         landmarks2d=landmarks2d,
                         world_landmarks=world_landmarks,
                         visibility=visibility,
@@ -441,7 +445,7 @@ def detect_pose_sequence(video_path: Path, role: str, target_fps: float) -> dict
                     FrameResult(
                         frame_idx=frame_idx,
                         sample_idx=sampled_index,
-                        time_sec=frame_idx / fps if fps else sampled_index / target_fps,
+                        time_sec=sample_time_sec,
                         landmarks2d=None,
                         world_landmarks=None,
                         visibility=None,
@@ -473,7 +477,7 @@ def detect_pose_sequence(video_path: Path, role: str, target_fps: float) -> dict
         "frame_count": frame_count,
         "duration_sec": frame_count / fps if fps else 0.0,
         "sample_interval": sample_interval,
-        "sampled_fps": fps / sample_interval if fps else target_fps,
+        "sampled_fps": target_fps,
         "primary_side": primary_side,
         "frames": frames,
     }
@@ -969,6 +973,7 @@ def draw_pose_overlay(
     if actual_landmarks is None:
         return output
 
+    glow_layer = np.zeros_like(output)
     skeleton_layer = output.copy()
     for a_idx, b_idx in BODY_CONNECTIONS:
         a = safe_point(actual_landmarks, a_idx)
@@ -976,10 +981,18 @@ def draw_pose_overlay(
         if a is None or b is None:
             continue
         cv2.line(
+            glow_layer,
+            (int(a[0] * width), int(a[1] * height)),
+            (int(b[0] * width), int(b[1] * height)),
+            (255, 255, 255),
+            9,
+            cv2.LINE_AA,
+        )
+        cv2.line(
             skeleton_layer,
             (int(a[0] * width), int(a[1] * height)),
             (int(b[0] * width), int(b[1] * height)),
-            (255, 214, 114),
+            (255, 255, 255),
             3,
             cv2.LINE_AA,
         )
@@ -988,15 +1001,25 @@ def draw_pose_overlay(
         if idx in FACE_INDICES:
             continue
         cv2.circle(
+            glow_layer,
+            (int(point[0] * width), int(point[1] * height)),
+            9,
+            (255, 255, 255),
+            -1,
+            cv2.LINE_AA,
+        )
+        cv2.circle(
             skeleton_layer,
             (int(point[0] * width), int(point[1] * height)),
             4,
-            (255, 238, 198),
+            (255, 255, 255),
             -1,
             cv2.LINE_AA,
         )
 
-    return cv2.addWeighted(skeleton_layer, 0.64, output, 0.36, 0.0)
+    glow_layer = cv2.GaussianBlur(glow_layer, (0, 0), 4.0)
+    output = cv2.addWeighted(output, 1.0, glow_layer, 0.34, 0.0)
+    return cv2.addWeighted(skeleton_layer, 0.72, output, 0.28, 0.0)
 
 
 def render_overlay_frames(
@@ -1013,7 +1036,7 @@ def render_overlay_frames(
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-    sample_interval = max(int(round(fps / sampled_fps)), 1) if fps else 3
+    sample_interval = fps / sampled_fps if fps and sampled_fps > 0 else 1.0
     preview_width = min(width, 540)
     preview_height = int(height * (preview_width / max(width, 1)))
 
@@ -1038,7 +1061,8 @@ def render_overlay_frames(
         if not ok or sample_idx >= len(frames):
             break
 
-        if frame_idx % sample_interval == 0:
+        target_frame_idx = int(round(sample_idx * sample_interval))
+        if frame_idx == target_frame_idx:
             frame_data = frames[sample_idx]
             composed = draw_pose_overlay(frame, frame_data["wrong"]["landmarks2d"])
             preview = composed
@@ -1203,6 +1227,747 @@ def ensure_directories(output_dir: Path) -> tuple[Path, Path]:
     return data_dir, media_dir
 
 
+def copy_media_file(source_path: Path, destination_path: Path) -> None:
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    if source_path.resolve() == destination_path.resolve():
+        return
+    shutil.copy2(source_path, destination_path)
+
+
+def load_bvh_hierarchy(output_dir: Path) -> str:
+    candidates = [
+        output_dir / "media" / "motions" / "user_pose_20fps.bvh",
+        Path("app") / "media" / "motions" / "user_pose_20fps.bvh",
+        output_dir / "user_pose_20fps.bvh",
+        Path("app") / "user_pose_20fps.bvh",
+    ]
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        text = candidate.read_text(encoding="utf-8", errors="replace")
+        if "MOTION" in text:
+            return text.split("MOTION", 1)[0].rstrip() + "\n"
+    raise SystemExit("Could not find an existing BVH hierarchy template for motion export.")
+
+
+def parse_bvh_channels(hierarchy_text: str) -> list[tuple[str, str]]:
+    channels: list[tuple[str, str]] = []
+    active_joint: str | None = None
+    for line in hierarchy_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("ROOT ") or stripped.startswith("JOINT "):
+            active_joint = stripped.split(maxsplit=1)[1]
+            continue
+        if stripped.startswith("CHANNELS ") and active_joint:
+            parts = stripped.split()
+            for channel in parts[2:]:
+                channels.append((active_joint, channel))
+            active_joint = None
+    return channels
+
+
+def bvh_point_dict(world_landmarks: list[list[float]] | None) -> dict[str, np.ndarray]:
+    if world_landmarks is None:
+        return {}
+    points: dict[str, np.ndarray] = {}
+    for name, index in LANDMARK_INDEX.items():
+        if index >= len(world_landmarks):
+            continue
+        raw = world_landmarks[index]
+        if len(raw) < 3:
+            continue
+        if len(raw) > 3 and raw[3] is not None and raw[3] < 0.12:
+            continue
+        points[name] = np.asarray([raw[0], -raw[1], -raw[2]], dtype=np.float64)
+    add_virtual_bvh_points(points)
+    return points
+
+
+def add_virtual_bvh_points(points: dict[str, np.ndarray]) -> None:
+    def avg(name: str, left: str, right: str) -> None:
+        if left in points and right in points:
+            points[name] = (points[left] + points[right]) / 2.0
+
+    avg("hips", "left_hip", "right_hip")
+    avg("shoulders", "left_shoulder", "right_shoulder")
+    avg("ears", "left_ear", "right_ear")
+    points["neck"] = points.get("shoulders", points.get("nose"))
+    points["head"] = points.get("nose", points.get("ears"))
+    points["left_index"] = points.get("left_index", points.get("left_wrist"))
+    points["right_index"] = points.get("right_index", points.get("right_wrist"))
+
+
+def normalize_degrees(value: float) -> float:
+    return ((value + 180.0) % 360.0) - 180.0
+
+
+def vector_to_bvh_euler(start: np.ndarray | None, end: np.ndarray | None) -> dict[str, float]:
+    if start is None or end is None:
+        return {}
+    vector = end - start
+    norm = float(np.linalg.norm(vector))
+    if norm <= 1e-6:
+        return {}
+    x, y, z = (vector / norm).tolist()
+    horizontal = max(math.sqrt(x * x + z * z), 1e-6)
+    yaw = math.degrees(math.atan2(x, z))
+    pitch = -math.degrees(math.atan2(y, horizontal))
+    roll = math.degrees(math.atan2(x, y if abs(y) > 1e-6 else 1e-6)) * 0.35
+    return {
+        "Zrotation": normalize_degrees(roll),
+        "Yrotation": normalize_degrees(yaw),
+        "Xrotation": normalize_degrees(pitch),
+    }
+
+
+BVH_VECTOR_MAP = {
+    "hips": ("hips", "shoulders"),
+    "Chest": ("hips", "shoulders"),
+    "Chest2": ("hips", "shoulders"),
+    "Chest3": ("hips", "neck"),
+    "Neck": ("neck", "head"),
+    "Head": ("neck", "head"),
+    "Head_End": ("neck", "head"),
+    "LeftCollar": ("neck", "left_shoulder"),
+    "LeftShoulder": ("left_shoulder", "left_elbow"),
+    "LeftElbow": ("left_elbow", "left_wrist"),
+    "LeftWrist": ("left_wrist", "left_index"),
+    "RightCollar": ("neck", "right_shoulder"),
+    "RightShoulder": ("right_shoulder", "right_elbow"),
+    "RightElbow": ("right_elbow", "right_wrist"),
+    "RightWrist": ("right_wrist", "right_index"),
+    "LeftHip": ("left_hip", "left_knee"),
+    "LeftKnee": ("left_knee", "left_ankle"),
+    "LeftAnkle": ("left_ankle", "left_foot_index"),
+    "LeftToe": ("left_heel", "left_foot_index"),
+    "RightHip": ("right_hip", "right_knee"),
+    "RightKnee": ("right_knee", "right_ankle"),
+    "RightAnkle": ("right_ankle", "right_foot_index"),
+    "RightToe": ("right_heel", "right_foot_index"),
+}
+
+
+AVATAR_REST_DIR = np.asarray([0.0, 1.0, 0.0], dtype=np.float64)
+AVATAR_ROOT_BONES = {"spine"}
+AVATAR_BONE_ORDER = [
+    "spine",
+    "spine.001",
+    "spine.002",
+    "spine.003",
+    "spine.004",
+    "shoulder.L",
+    "upper_arm.L",
+    "forearm.L",
+    "hand.L",
+    "shoulder.R",
+    "upper_arm.R",
+    "forearm.R",
+    "hand.R",
+    "thigh.L",
+    "shin.L",
+    "foot.L",
+    "thigh.R",
+    "shin.R",
+    "foot.R",
+]
+AVATAR_BONE_PARENT = {
+    "spine.001": "spine",
+    "spine.002": "spine.001",
+    "spine.003": "spine.002",
+    "spine.004": "spine.003",
+    "shoulder.L": "spine.003",
+    "upper_arm.L": "shoulder.L",
+    "forearm.L": "upper_arm.L",
+    "hand.L": "forearm.L",
+    "shoulder.R": "spine.003",
+    "upper_arm.R": "shoulder.R",
+    "forearm.R": "upper_arm.R",
+    "hand.R": "forearm.R",
+    "thigh.L": "spine",
+    "shin.L": "thigh.L",
+    "foot.L": "shin.L",
+    "thigh.R": "spine",
+    "shin.R": "thigh.R",
+    "foot.R": "shin.R",
+}
+AVATAR_BONE_TARGETS = {
+    "spine": ("hips", "shoulders"),
+    "spine.001": ("hips", "shoulders"),
+    "spine.002": ("hips", "shoulders"),
+    "spine.003": ("hips", "neck"),
+    "spine.004": ("neck", "head"),
+    "shoulder.L": ("neck", "left_shoulder"),
+    "upper_arm.L": ("left_shoulder", "left_elbow"),
+    "forearm.L": ("left_elbow", "left_wrist"),
+    "hand.L": ("left_wrist", "left_index"),
+    "shoulder.R": ("neck", "right_shoulder"),
+    "upper_arm.R": ("right_shoulder", "right_elbow"),
+    "forearm.R": ("right_elbow", "right_wrist"),
+    "hand.R": ("right_wrist", "right_index"),
+    "thigh.L": ("left_hip", "left_knee"),
+    "shin.L": ("left_knee", "left_ankle"),
+    "foot.L": ("left_ankle", "left_foot_index"),
+    "thigh.R": ("right_hip", "right_knee"),
+    "shin.R": ("right_knee", "right_ankle"),
+    "foot.R": ("right_ankle", "right_foot_index"),
+}
+SPINE_LOCAL_FACTORS = {
+    "spine": 0.34,
+    "spine.001": 0.24,
+    "spine.002": 0.2,
+    "spine.003": 0.16,
+    "spine.004": 0.1,
+}
+
+
+def normalize_vector(vector: np.ndarray | None) -> np.ndarray | None:
+    if vector is None:
+        return None
+    norm = float(np.linalg.norm(vector))
+    if norm <= 1e-6:
+        return None
+    return vector / norm
+
+
+def normalize_quat(quat: np.ndarray) -> np.ndarray:
+    norm = float(np.linalg.norm(quat))
+    if norm <= 1e-9:
+        return np.asarray([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+    return quat / norm
+
+
+def quat_multiply(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return normalize_quat(
+        np.asarray(
+            [
+                aw * bx + ax * bw + ay * bz - az * by,
+                aw * by - ax * bz + ay * bw + az * bx,
+                aw * bz + ax * by - ay * bx + az * bw,
+                aw * bw - ax * bx - ay * by - az * bz,
+            ],
+            dtype=np.float64,
+        )
+    )
+
+
+def quat_inverse(quat: np.ndarray) -> np.ndarray:
+    x, y, z, w = normalize_quat(quat)
+    return np.asarray([-x, -y, -z, w], dtype=np.float64)
+
+
+def quat_from_unit_vectors(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    source = normalize_vector(source)
+    target = normalize_vector(target)
+    if source is None or target is None:
+        return np.asarray([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+
+    dot = float(np.clip(np.dot(source, target), -1.0, 1.0))
+    if dot < -0.999999:
+        axis = np.cross(source, np.asarray([1.0, 0.0, 0.0], dtype=np.float64))
+        if np.linalg.norm(axis) <= 1e-6:
+            axis = np.cross(source, np.asarray([0.0, 0.0, 1.0], dtype=np.float64))
+        axis = normalize_vector(axis)
+        return np.asarray([axis[0], axis[1], axis[2], 0.0], dtype=np.float64)
+
+    cross = np.cross(source, target)
+    return normalize_quat(np.asarray([cross[0], cross[1], cross[2], 1.0 + dot], dtype=np.float64))
+
+
+def quat_slerp(a: np.ndarray, b: np.ndarray, t: float) -> np.ndarray:
+    a = normalize_quat(a)
+    b = normalize_quat(b)
+    dot = float(np.dot(a, b))
+    if dot < 0.0:
+        b = -b
+        dot = -dot
+    if dot > 0.9995:
+        return normalize_quat(a + t * (b - a))
+    theta_0 = math.acos(np.clip(dot, -1.0, 1.0))
+    sin_theta_0 = math.sin(theta_0)
+    theta = theta_0 * t
+    sin_theta = math.sin(theta)
+    s0 = math.cos(theta) - dot * sin_theta / sin_theta_0
+    s1 = sin_theta / sin_theta_0
+    return normalize_quat((s0 * a) + (s1 * b))
+
+
+def quat_rotate_vector(quat: np.ndarray, vector: np.ndarray) -> np.ndarray:
+    quat = normalize_quat(quat)
+    q_xyz = quat[:3]
+    t = 2.0 * np.cross(q_xyz, vector)
+    return vector + (quat[3] * t) + np.cross(q_xyz, t)
+
+
+@dataclass
+class AvatarBoneRest:
+    name: str
+    parent: str | None
+    local_quat: np.ndarray
+    world_quat: np.ndarray
+    world_pos: np.ndarray
+    rest_dir: np.ndarray
+
+
+def read_glb_json(glb_path: Path) -> dict[str, Any]:
+    data = glb_path.read_bytes()
+    if len(data) < 20:
+        raise SystemExit(f"Invalid GLB file: {glb_path}")
+    magic, _version, _length = struct.unpack_from("<III", data, 0)
+    if magic != 0x46546C67:
+        raise SystemExit(f"Avatar model is not a GLB file: {glb_path}")
+
+    offset = 12
+    while offset + 8 <= len(data):
+        chunk_length, chunk_type = struct.unpack_from("<II", data, offset)
+        offset += 8
+        chunk = data[offset : offset + chunk_length]
+        offset += chunk_length
+        if chunk_type == 0x4E4F534A:
+            return json.loads(chunk.decode("utf-8"))
+    raise SystemExit(f"Avatar GLB did not contain a JSON chunk: {glb_path}")
+
+
+def load_avatar_rest_skeleton(glb_path: Path) -> dict[str, AvatarBoneRest]:
+    doc = read_glb_json(glb_path)
+    nodes = doc.get("nodes", [])
+    parent_by_index: dict[int, int] = {}
+    for index, node in enumerate(nodes):
+        for child_index in node.get("children", []) or []:
+            parent_by_index[int(child_index)] = index
+
+    name_by_index = {index: node.get("name", "") for index, node in enumerate(nodes)}
+    index_by_name = {name: index for index, name in name_by_index.items() if name}
+    missing = [bone for bone in AVATAR_BONE_ORDER if bone not in index_by_name]
+    if missing:
+        raise SystemExit(f"Avatar model is missing expected bones: {', '.join(missing)}")
+
+    world_pos_by_index: dict[int, np.ndarray] = {}
+    world_quat_by_index: dict[int, np.ndarray] = {}
+
+    def compute_world(index: int) -> tuple[np.ndarray, np.ndarray]:
+        if index in world_pos_by_index and index in world_quat_by_index:
+            return world_pos_by_index[index], world_quat_by_index[index]
+        node = nodes[index]
+        local_pos = np.asarray(node.get("translation", [0.0, 0.0, 0.0]), dtype=np.float64)
+        local_quat = normalize_quat(np.asarray(node.get("rotation", [0.0, 0.0, 0.0, 1.0]), dtype=np.float64))
+        parent_index = parent_by_index.get(index)
+        if parent_index is None:
+            world_pos = local_pos
+            world_quat = local_quat
+        else:
+            parent_pos, parent_quat = compute_world(parent_index)
+            world_pos = parent_pos + quat_rotate_vector(parent_quat, local_pos)
+            world_quat = quat_multiply(parent_quat, local_quat)
+        world_pos_by_index[index] = world_pos
+        world_quat_by_index[index] = world_quat
+        return world_pos, world_quat
+
+    for bone_name in AVATAR_BONE_ORDER:
+        compute_world(index_by_name[bone_name])
+
+    child_names_by_parent: dict[str, list[str]] = {}
+    for child_name, parent_name in AVATAR_BONE_PARENT.items():
+        child_names_by_parent.setdefault(parent_name, []).append(child_name)
+
+    rest: dict[str, AvatarBoneRest] = {}
+    for bone_name in AVATAR_BONE_ORDER:
+        bone_index = index_by_name[bone_name]
+        node = nodes[bone_index]
+        local_quat = normalize_quat(np.asarray(node.get("rotation", [0.0, 0.0, 0.0, 1.0]), dtype=np.float64))
+        world_pos, world_quat = compute_world(bone_index)
+        child_candidates = child_names_by_parent.get(bone_name, [])
+        child_index = next((index_by_name[name] for name in child_candidates if name in index_by_name), None)
+        if child_index is None:
+            direct_children = node.get("children", []) or []
+            child_index = int(direct_children[0]) if direct_children else None
+        if child_index is None:
+            rest_dir = normalize_vector(quat_rotate_vector(world_quat, AVATAR_REST_DIR))
+        else:
+            child_pos, _child_quat = compute_world(child_index)
+            rest_dir = normalize_vector(child_pos - world_pos)
+        if rest_dir is None:
+            rest_dir = np.asarray([0.0, 1.0, 0.0], dtype=np.float64)
+        rest[bone_name] = AvatarBoneRest(
+            name=bone_name,
+            parent=AVATAR_BONE_PARENT.get(bone_name),
+            local_quat=local_quat,
+            world_quat=world_quat,
+            world_pos=world_pos,
+            rest_dir=rest_dir,
+        )
+    return rest
+
+
+def torso_direction_from_metrics(frame: FrameResult, points: dict[str, np.ndarray]) -> np.ndarray | None:
+    lean_values = [
+        float(metrics["torso_lean_deg"])
+        for metrics in frame.metrics_by_side.values()
+        if metrics.get("torso_lean_deg") is not None and math.isfinite(float(metrics["torso_lean_deg"]))
+    ]
+    if not lean_values:
+        return None
+
+    lean_deg = max(0.0, min(55.0, float(sum(lean_values) / len(lean_values)) * 1.25))
+    lateral = 0.0
+    if points.get("shoulders") is not None and points.get("hips") is not None:
+        lateral = float(np.clip((points["shoulders"][0] - points["hips"][0]) * 1.8, -0.35, 0.35))
+    pitch = math.radians(lean_deg)
+    return normalize_vector(np.asarray([lateral, math.cos(pitch), -math.sin(pitch)], dtype=np.float64))
+
+
+def avatar_pose_frame(
+    frame: FrameResult,
+    origin: np.ndarray,
+    previous_bones: dict[str, list[float]],
+    rest_skeleton: dict[str, AvatarBoneRest],
+) -> tuple[dict[str, Any], dict[str, list[float]]]:
+    points = bvh_point_dict(frame.world_landmarks)
+    if not points:
+        return {
+            "root": [0.0, 0.0, 0.0],
+            "bones": previous_bones,
+        }, previous_bones
+
+    hips = points.get("hips", origin)
+    root_delta = (hips - origin).astype(float)
+    root = [
+        round(float(root_delta[0]) * 0.45, 6),
+        round(float(root_delta[1]) * 0.45, 6),
+        round(float(root_delta[2]) * 0.28, 6),
+    ]
+
+    world_quats: dict[str, np.ndarray] = {}
+    local_quats: dict[str, list[float]] = {}
+    torso_direction = torso_direction_from_metrics(frame, points)
+    for bone_name in AVATAR_BONE_ORDER:
+        rest = rest_skeleton[bone_name]
+        start_name, end_name = AVATAR_BONE_TARGETS[bone_name]
+        target_dir = None
+        if bone_name.startswith("spine") and torso_direction is not None:
+            target_dir = torso_direction
+        elif start_name in points and end_name in points and points[start_name] is not None and points[end_name] is not None:
+            target_dir = normalize_vector(points[end_name] - points[start_name])
+
+        parent_name = rest.parent
+        if parent_name is None:
+            parent_world = np.asarray([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+        else:
+            parent_world = world_quats.get(parent_name, rest_skeleton[parent_name].world_quat)
+        if target_dir is None:
+            local_quat = np.asarray(previous_bones.get(bone_name, rest.local_quat.tolist()), dtype=np.float64)
+            world_quat = quat_multiply(parent_world, local_quat)
+        elif bone_name in SPINE_LOCAL_FACTORS:
+            delta_world = quat_from_unit_vectors(rest.rest_dir, target_dir)
+            desired_world = quat_multiply(delta_world, rest.world_quat)
+            desired_local = quat_multiply(quat_inverse(parent_world), desired_world)
+            local_quat = quat_slerp(rest.local_quat, desired_local, SPINE_LOCAL_FACTORS[bone_name])
+            world_quat = quat_multiply(parent_world, local_quat)
+        else:
+            delta_world = quat_from_unit_vectors(rest.rest_dir, target_dir)
+            desired_world = quat_multiply(delta_world, rest.world_quat)
+            local_quat = quat_multiply(quat_inverse(parent_world), desired_world)
+            world_quat = quat_multiply(parent_world, local_quat)
+
+        local_quat = normalize_quat(local_quat)
+        local_quats[bone_name] = [round(float(value), 6) for value in local_quat.tolist()]
+        world_quats[bone_name] = world_quat
+
+    return {
+        "root": root,
+        "bones": local_quats,
+    }, local_quats
+
+
+def write_avatar_motion_json(
+    sequence: dict[str, Any],
+    output_path: Path,
+    target_fps: float,
+    model_path: str,
+    source_label: str,
+    rest_skeleton: dict[str, AvatarBoneRest],
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    origin = first_valid_bvh_origin(sequence)
+    previous_bones = {bone_name: rest_skeleton[bone_name].local_quat.tolist() for bone_name in AVATAR_BONE_ORDER}
+    frames: list[dict[str, Any]] = []
+    for frame in sequence["frames"]:
+        pose_frame, previous_bones = avatar_pose_frame(frame, origin, previous_bones, rest_skeleton)
+        frames.append(pose_frame)
+
+    payload = {
+        "fps": target_fps,
+        "source": source_label,
+        "model": model_path,
+        "coordinate_system": "mediapipe_world_to_three_y_up",
+        "motion_space": "male_base_mesh_local_quaternion",
+        "bones": AVATAR_BONE_ORDER,
+        "frames": frames,
+    }
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+
+def build_bvh_values(
+    frame: FrameResult,
+    channel_order: list[tuple[str, str]],
+    origin: np.ndarray,
+    previous_values: list[float],
+) -> list[float]:
+    points = bvh_point_dict(frame.world_landmarks)
+    if not points:
+        return previous_values[:]
+
+    rotations = {
+        joint: vector_to_bvh_euler(points.get(start), points.get(end))
+        for joint, (start, end) in BVH_VECTOR_MAP.items()
+    }
+    hips = points.get("hips", origin)
+    root_position = (hips - origin) * 100.0
+    root_values = {
+        "Xposition": float(root_position[0]),
+        "Yposition": float(30.0 + root_position[1]),
+        "Zposition": float(root_position[2]),
+    }
+
+    values: list[float] = []
+    for joint, channel in channel_order:
+        if joint == "hips" and channel.endswith("position"):
+            values.append(root_values.get(channel, 0.0))
+        else:
+            values.append(rotations.get(joint, {}).get(channel, 0.0))
+    return values
+
+
+def first_valid_bvh_origin(sequence: dict[str, Any]) -> np.ndarray:
+    for frame in sequence["frames"]:
+        points = bvh_point_dict(frame.world_landmarks)
+        if "hips" in points:
+            return points["hips"]
+    return np.zeros(3, dtype=np.float64)
+
+
+def write_sequence_bvh(sequence: dict[str, Any], output_path: Path, hierarchy_text: str, target_fps: float) -> None:
+    channel_order = parse_bvh_channels(hierarchy_text)
+    if not channel_order:
+        raise SystemExit("BVH hierarchy did not contain channel definitions.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    origin = first_valid_bvh_origin(sequence)
+    previous_values = [0.0] * len(channel_order)
+    motion_frames: list[list[float]] = []
+    for frame in sequence["frames"]:
+        values = build_bvh_values(frame, channel_order, origin, previous_values)
+        previous_values = values
+        motion_frames.append(values)
+
+    with output_path.open("w", encoding="utf-8", newline="\n") as file:
+        file.write(hierarchy_text)
+        file.write("MOTION\n")
+        file.write(f"Frames: {len(motion_frames)}\n")
+        file.write(f"Frame Time: {1.0 / target_fps:.6f}\n")
+        for values in motion_frames:
+            file.write(" ".join(f"{value:.6f}" for value in values) + "\n")
+
+
+def write_motion_assets(correct: dict[str, Any], wrong: dict[str, Any], output_dir: Path, media_dir: Path, target_fps: float) -> dict[str, Any]:
+    hierarchy_text = load_bvh_hierarchy(output_dir)
+    motion_dir = media_dir / "motions"
+    user_pose_path = motion_dir / "user_pose_20fps.bvh"
+    user_legacy_path = motion_dir / "user_bvh.bvh"
+    correct_pose_path = motion_dir / "correct_pose_20fps.bvh"
+    user_avatar_motion_path = motion_dir / "user_avatar_motion.json"
+    correct_avatar_motion_path = motion_dir / "correct_avatar_motion.json"
+    avatar_model_path = media_dir / "avatar" / "male_base_mesh.glb"
+    rest_skeleton = load_avatar_rest_skeleton(avatar_model_path)
+
+    write_sequence_bvh(wrong, user_pose_path, hierarchy_text, target_fps)
+    write_sequence_bvh(wrong, user_legacy_path, hierarchy_text, target_fps)
+    write_sequence_bvh(correct, correct_pose_path, hierarchy_text, target_fps)
+    write_avatar_motion_json(wrong, user_avatar_motion_path, target_fps, "media/avatar/male_base_mesh.glb", "wrong.mp4", rest_skeleton)
+    write_avatar_motion_json(correct, correct_avatar_motion_path, target_fps, "media/avatar/male_base_mesh.glb", "correct.mp4", rest_skeleton)
+
+    return {
+        "fps": target_fps,
+        "user_bvh": "media/motions/user_pose_20fps.bvh",
+        "user_legacy_bvh": "media/motions/user_bvh.bvh",
+        "correct_bvh": "media/motions/correct_pose_20fps.bvh",
+        "user_avatar_motion": "media/motions/user_avatar_motion.json",
+        "correct_avatar_motion": "media/motions/correct_avatar_motion.json",
+        "avatar_model": "media/avatar/male_base_mesh.glb",
+        "mapping": "mediapipe_pose_world_landmarks_to_male_base_mesh_bones",
+    }
+
+
+def draw_gradient_background(image: Any) -> None:
+    from PIL import ImageDraw
+
+    width, height = image.size
+    pixels = image.load()
+    for y in range(height):
+        for x in range(width):
+            dx = (x - width * 0.42) / width
+            dy = (y - height * 0.32) / height
+            glow = max(0.0, 1.0 - math.sqrt(dx * dx + dy * dy) * 2.2)
+            base = 9 + int(glow * 24)
+            blue = 20 + int(glow * 58)
+            pixels[x, y] = (base, base + 8, blue, 255)
+
+    draw = ImageDraw.Draw(image, "RGBA")
+    for y in range(int(height * 0.68), height, 28):
+        alpha = max(8, int(42 * (1 - (y - height * 0.68) / (height * 0.32))))
+        draw.line([(0, y), (width, y)], fill=(87, 206, 255, alpha), width=2)
+    for x in range(-width, width * 2, 68):
+        draw.line([(x, height), (x + width * 0.52, int(height * 0.68))], fill=(87, 206, 255, 18), width=2)
+
+
+def draw_capsule(draw: Any, start: tuple[float, float], end: tuple[float, float], width: int, fill: tuple[int, int, int, int]) -> None:
+    draw.line([start, end], fill=fill, width=width)
+    radius = width / 2
+    for point in (start, end):
+        draw.ellipse(
+            [point[0] - radius, point[1] - radius, point[0] + radius, point[1] + radius],
+            fill=fill,
+        )
+
+
+def draw_avatar_card(output_path: Path, pose: dict[str, tuple[float, float]], accent: tuple[int, int, int, int]) -> None:
+    from PIL import Image, ImageDraw, ImageFilter
+
+    size = 900
+    image = Image.new("RGBA", (size, size), (5, 9, 14, 255))
+    draw_gradient_background(image)
+
+    shadow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    shadow_draw = ImageDraw.Draw(shadow, "RGBA")
+    for a, b, width in [
+        ("hip", "shoulder", 92),
+        ("shoulder", "head", 78),
+        ("l_shoulder", "l_elbow", 58),
+        ("l_elbow", "l_wrist", 48),
+        ("r_shoulder", "r_elbow", 58),
+        ("r_elbow", "r_wrist", 48),
+        ("l_hip", "l_knee", 64),
+        ("l_knee", "l_ankle", 54),
+        ("r_hip", "r_knee", 64),
+        ("r_knee", "r_ankle", 54),
+    ]:
+        draw_capsule(shadow_draw, pose[a], pose[b], width + 18, (0, 0, 0, 96))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(18))
+    image.alpha_composite(shadow)
+
+    avatar = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    avatar_draw = ImageDraw.Draw(avatar, "RGBA")
+    limb = (239, 249, 255, 236)
+    core = (248, 252, 255, 245)
+    glow = accent
+
+    for a, b, width in [
+        ("l_shoulder", "l_elbow", 54),
+        ("l_elbow", "l_wrist", 44),
+        ("r_shoulder", "r_elbow", 54),
+        ("r_elbow", "r_wrist", 44),
+        ("l_hip", "l_knee", 60),
+        ("l_knee", "l_ankle", 50),
+        ("r_hip", "r_knee", 60),
+        ("r_knee", "r_ankle", 50),
+    ]:
+        draw_capsule(avatar_draw, pose[a], pose[b], width + 16, (glow[0], glow[1], glow[2], 42))
+        draw_capsule(avatar_draw, pose[a], pose[b], width, limb)
+
+    draw_capsule(avatar_draw, pose["hip"], pose["shoulder"], 86, core)
+    draw_capsule(avatar_draw, pose["shoulder"], pose["head"], 62, core)
+    hx, hy = pose["head"]
+    avatar_draw.ellipse([hx - 58, hy - 58, hx + 58, hy + 58], fill=(248, 252, 255, 248))
+    avatar_draw.ellipse([hx - 38, hy - 54, hx + 46, hy + 42], fill=(228, 242, 250, 160))
+
+    avatar = avatar.filter(ImageFilter.UnsharpMask(radius=2, percent=120, threshold=3))
+    image.alpha_composite(avatar)
+
+    image.save(output_path)
+
+
+def write_exercise_card_assets(media_dir: Path) -> dict[str, str]:
+    exercise_dir = media_dir / "exercises"
+    exercise_dir.mkdir(parents=True, exist_ok=True)
+    poses = {
+        "squat": {
+            "head": (450, 210),
+            "shoulder": (450, 330),
+            "hip": (450, 500),
+            "l_shoulder": (360, 340),
+            "l_elbow": (305, 470),
+            "l_wrist": (270, 610),
+            "r_shoulder": (540, 340),
+            "r_elbow": (595, 470),
+            "r_wrist": (630, 610),
+            "l_hip": (388, 510),
+            "l_knee": (315, 665),
+            "l_ankle": (260, 790),
+            "r_hip": (512, 510),
+            "r_knee": (585, 665),
+            "r_ankle": (640, 790),
+        },
+        "deadlift": {
+            "head": (468, 222),
+            "shoulder": (440, 350),
+            "hip": (520, 520),
+            "l_shoulder": (360, 365),
+            "l_elbow": (360, 525),
+            "l_wrist": (360, 690),
+            "r_shoulder": (520, 335),
+            "r_elbow": (520, 520),
+            "r_wrist": (520, 690),
+            "l_hip": (450, 535),
+            "l_knee": (390, 680),
+            "l_ankle": (340, 802),
+            "r_hip": (590, 505),
+            "r_knee": (650, 670),
+            "r_ankle": (690, 802),
+        },
+        "lunge": {
+            "head": (450, 200),
+            "shoulder": (450, 322),
+            "hip": (465, 500),
+            "l_shoulder": (365, 330),
+            "l_elbow": (300, 455),
+            "l_wrist": (250, 585),
+            "r_shoulder": (535, 330),
+            "r_elbow": (600, 455),
+            "r_wrist": (650, 585),
+            "l_hip": (405, 510),
+            "l_knee": (285, 635),
+            "l_ankle": (205, 790),
+            "r_hip": (525, 500),
+            "r_knee": (640, 710),
+            "r_ankle": (735, 805),
+        },
+        "press": {
+            "head": (450, 245),
+            "shoulder": (450, 365),
+            "hip": (450, 555),
+            "l_shoulder": (365, 365),
+            "l_elbow": (315, 215),
+            "l_wrist": (300, 90),
+            "r_shoulder": (535, 365),
+            "r_elbow": (585, 215),
+            "r_wrist": (600, 90),
+            "l_hip": (390, 570),
+            "l_knee": (380, 700),
+            "l_ankle": (360, 820),
+            "r_hip": (510, 570),
+            "r_knee": (520, 700),
+            "r_ankle": (540, 820),
+        },
+    }
+    output: dict[str, str] = {}
+    for index, (exercise, pose) in enumerate(poses.items()):
+        path = exercise_dir / f"{exercise}-avatar.png"
+        draw_avatar_card(path, pose, (87, 206, 255, 255) if index != 2 else (122, 234, 179, 255))
+        output[exercise] = f"media/exercises/{exercise}-avatar.png"
+    return output
+
+
 def build_payload(correct: dict[str, Any], wrong: dict[str, Any], comparison: dict[str, Any], media_payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "brand": {
@@ -1236,6 +2001,16 @@ def main() -> None:
     overlay_path = media_dir / "wrong_overlay.mp4"
     frame_dir = media_dir / "frames"
     media_payload = render_overlay_frames(args.wrong.resolve(), comparison, overlay_path, frame_dir, wrong["sampled_fps"])
+    copy_media_file(args.correct.resolve(), media_dir / "correct.mp4")
+    copy_media_file(args.wrong.resolve(), media_dir / "wrong.mp4")
+    media_payload.update(
+        {
+            "reference_video": "media/correct.mp4",
+            "source_user_video": "media/wrong.mp4",
+            "motions": write_motion_assets(correct, wrong, output_dir, media_dir, args.target_fps),
+            "exercise_cards": write_exercise_card_assets(media_dir),
+        }
+    )
 
     payload = build_payload(correct, wrong, comparison, media_payload)
     rounded_payload = round_nested(payload)
@@ -1253,6 +2028,7 @@ def main() -> None:
     print(f"Session data written to {analysis_path}")
     print(f"Inline session data written to {inline_path}")
     print(f"Overlay video written to {overlay_path}")
+    print(f"Motion BVH files written to {media_dir / 'motions'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,137 @@
+{
+  "generated_at": "2026-04-20",
+  "session": {
+    "exercise": "Barbell Back Squat",
+    "model": "MediaPipe Pose",
+    "primary_side": "right"
+  },
+
+  "matching_completion": {
+    "_description": "매칭/완성도 지표 — 모범 자세 대비 유사도 및 세트 완료 현황",
+    "overall_average_score": 92.07,
+    "final_match_score": 92,
+    "avg_match_rate_pct": 92.64,
+    "rep_count": 5,
+    "active_frame_count": 504,
+    "per_rep_scores": [
+      { "rep": 1, "avg_score": 97.94, "min_score": 90.67, "max_score": 99.00, "frame_count": 9 },
+      { "rep": 2, "avg_score": 92.93, "min_score": 80.94, "max_score": 99.00, "frame_count": 53 },
+      { "rep": 3, "avg_score": 94.44, "min_score": 78.57, "max_score": 99.00, "frame_count": 40 },
+      { "rep": 4, "avg_score": 92.88, "min_score": 78.19, "max_score": 99.00, "frame_count": 259 },
+      { "rep": 5, "avg_score": 91.25, "min_score": 74.57, "max_score": 99.00, "frame_count": 143 }
+    ]
+  },
+
+  "feedback_quality": {
+    "_description": "피드백/품질 지표 — 세부 자세 품질 점수, 주요 이슈 발생 빈도 및 우선순위",
+    "final_quality_scores": [
+      { "id": "match",          "label": "전문가 일치도",    "score": 92 },
+      { "id": "heel_contact",   "label": "뒤꿈치 접지",      "score": 63 },
+      { "id": "hip_hinge",      "label": "고관절 힌지",      "score": 63 },
+      { "id": "stability",      "label": "중심 안정성",      "score": 60 },
+      { "id": "knee_load",      "label": "무릎 하중 분산",   "score": 60 },
+      { "id": "posterior_chain","label": "후면사슬 활용",    "score": 83 }
+    ],
+    "avg_live_metrics": [
+      { "id": "match_rate",          "label": "모범 자세 유사도",    "avg_value": 92.64, "unit": "%" },
+      { "id": "balance_offset_norm", "label": "몸 중심 안정감",      "avg_value": 5.91,  "unit": "%" },
+      { "id": "heel_lift_norm",      "label": "발뒤꿈치 지지",       "avg_value": 5.10,  "unit": "%" },
+      { "id": "posterior_chain_score","label":"엉덩이·햄스트링 사용","avg_value": 5.10,  "unit": "%" },
+      { "id": "hip_hinge_norm",      "label": "골반 접힘 깊이",      "avg_value": 3.18,  "unit": "%" },
+      { "id": "knee_forward_norm",   "label": "무릎 전진",           "avg_value": 0.55,  "unit": "%" }
+    ],
+    "top_findings": [
+      {
+        "id": "hip_hinge",
+        "label": "고관절 힌지 부족",
+        "segment_count": 47,
+        "frame_hits": 481,
+        "avg_severity": 0.8347,
+        "peak_delta": 0.1389,
+        "priority": 0.9547
+      },
+      {
+        "id": "balance",
+        "label": "중심축 흔들림",
+        "segment_count": 18,
+        "frame_hits": null,
+        "avg_severity": null,
+        "peak_delta": null,
+        "priority": null
+      },
+      {
+        "id": "knee_drive",
+        "label": "무릎 전진 과다",
+        "segment_count": 12,
+        "frame_hits": 16,
+        "avg_severity": 0.7011,
+        "peak_delta": 0.1788,
+        "priority": 0.8211
+      },
+      {
+        "id": "heel_pressure",
+        "label": "뒤꿈치 접지 약화",
+        "segment_count": 2,
+        "frame_hits": 4,
+        "avg_severity": 0.7653,
+        "peak_delta": 0.0744,
+        "priority": 0.8853
+      },
+      {
+        "id": "posterior_chain",
+        "label": "후면사슬 약화",
+        "segment_count": 1,
+        "frame_hits": null,
+        "avg_severity": null,
+        "peak_delta": null,
+        "priority": null
+      }
+    ],
+    "issue_hits_per_rep": [
+      { "rep": 1, "hip_hinge": 2,   "knee_drive": 1,  "balance": 0  },
+      { "rep": 2, "hip_hinge": 41,  "knee_drive": 2,  "balance": 5  },
+      { "rep": 3, "hip_hinge": 31,  "knee_drive": 0,  "balance": 1  },
+      { "rep": 4, "hip_hinge": 227, "knee_drive": 0,  "balance": 17 },
+      { "rep": 5, "hip_hinge": 101, "knee_drive": 4,  "balance": 33 }
+    ]
+  },
+
+  "session_user_stats": {
+    "_description": "세션별·유저별 통계 — 입력 영상 메타, rep별 구간 정보, 코칭 요약",
+    "user_video": {
+      "resolution": "406x720",
+      "fps": 24.0,
+      "sampled_fps": 12.0,
+      "duration_sec": 54.04,
+      "total_frames": 1297,
+      "sampled_frames": 649
+    },
+    "reference_video": {
+      "resolution": "1080x1920",
+      "fps": 29.98,
+      "sampled_fps": 9.99,
+      "duration_sec": 24.41,
+      "total_frames": 732,
+      "sampled_frames": 244
+    },
+    "session_phases": {
+      "prep_phase_sec": 9,
+      "active_exercise_end_sec": 51,
+      "active_duration_sec": 42
+    },
+    "per_rep_summary": [
+      { "rep": 1, "avg_score": 97.94, "dominant_issue": "hip_hinge",  "issue_frame_count": 3  },
+      { "rep": 2, "avg_score": 92.93, "dominant_issue": "hip_hinge",  "issue_frame_count": 48 },
+      { "rep": 3, "avg_score": 94.44, "dominant_issue": "hip_hinge",  "issue_frame_count": 32 },
+      { "rep": 4, "avg_score": 92.88, "dominant_issue": "hip_hinge",  "issue_frame_count": 244 },
+      { "rep": 5, "avg_score": 91.25, "dominant_issue": "hip_hinge",  "issue_frame_count": 138 }
+    ],
+    "next_session_tips": [
+      "내려갈 때 엉덩이를 먼저 뒤로 보내는 연습을 5회 반복하세요.",
+      "뒤꿈치와 발 중앙으로 바닥을 누르는 감각을 먼저 만든 뒤 스쿼트를 시작하세요.",
+      "상체와 골반이 동시에 내려가도록 천천히 3회 리허설한 뒤 본 세트에 들어가세요."
+    ],
+    "trainer_status": "고관절 힌지와 뒤꿈치 지지 우선 보완",
+    "medical_status": "무릎과 발목 전면 부담 관리 필요"
+  }
+}
