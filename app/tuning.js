@@ -38,8 +38,8 @@ window.WORKWITH_TUNING = {
 
     camera: {
       fov: 38,
-      position: { x: 4.5, y: 0.6, z: 0.0 },
-      lookAt: { x: 0.0, y: 1.3, z: 0.0 },
+      position: { x: 3.15, y: 0.76, z: 0.0 },
+      lookAt: { x: 0.0, y: 1.18, z: 0.0 },
     },
 
     lights: {

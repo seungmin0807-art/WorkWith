@@ -2444,16 +2444,35 @@ textarea {
   }
 
   .analysis-panel {
-    gap: 5px;
+    gap: 6px;
     padding-bottom: 6px;
     overflow-y: auto;
     scrollbar-gutter: auto;
   }
 
+  .analysis-panel .panel-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    min-height: 58px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+  }
+
+  .analysis-panel .panel-head > div:first-child {
+    flex-basis: auto;
+  }
+
+  .analysis-panel .panel-head h2 {
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
   .score-chip {
-    min-width: 48px;
+    min-width: 46px;
     padding: 4px 7px;
     border-radius: 14px;
+    justify-self: end;
   }
 
   .score-chip span {
@@ -2461,7 +2480,7 @@ textarea {
   }
 
   .score-chip strong {
-    font-size: 1.22rem;
+    font-size: 1.08rem;
   }
 
   .playback-controls,
@@ -2475,7 +2494,12 @@ textarea {
   }
 
   .session-action-row {
+    margin-top: 4px;
     gap: 6px;
+  }
+
+  .playback-controls {
+    padding-top: 4px;
   }
 
   .primary-action,
