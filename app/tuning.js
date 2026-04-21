@@ -63,8 +63,8 @@ window.WORKWITH_TUNING = {
     },
 
     shoulders: {
-      widthOffset: 0.04,
-      armRootOffset: 0.016,
+      widthOffset: 0.055,
+      armRootOffset: 0.022,
     },
 
     // Widen the stance from the lower legs / feet only so the pelvis does not look wider.
@@ -79,24 +79,26 @@ window.WORKWITH_TUNING = {
       lockToGround: true,
     },
 
-    // Hand / wrist shaping. Increase wristBackBendX if you want more backward bend.
+    // Closed-fist defaults.
     hands: {
-      wristBackBendX: 1.06,
-      wristSplayZ: 0.14,
-      thumbBaseX: -0.08,
-      thumbBaseY: 0.18,
-      thumbBaseZ: 0.34,
-      thumbMidX: -0.04,
-      thumbMidY: 0.08,
-      thumbMidZ: 0.16,
-      thumbTipX: -0.02,
-      thumbTipY: 0.03,
-      thumbTipZ: 0.08,
-      fingerBaseBendX: -0.08,
-      fingerIndexSpreadZ: 0.08,
-      fingerMiddleSpreadZ: 0.03,
-      fingerRingSpreadZ: -0.03,
-      fingerPinkySpreadZ: -0.08,
+      wristBendX: 0.16,
+      wristSplayZ: 0.03,
+      thumbBaseX: 0.2,
+      thumbBaseY: 0.62,
+      thumbBaseZ: 0.56,
+      thumbMidX: 0.16,
+      thumbMidY: 0.32,
+      thumbMidZ: 0.28,
+      thumbTipX: 0.12,
+      thumbTipY: 0.16,
+      thumbTipZ: 0.14,
+      fingerBaseCurlX: 1.16,
+      fingerMidCurlX: 0.98,
+      fingerTipCurlX: 0.82,
+      fingerIndexSpreadZ: 0.04,
+      fingerMiddleSpreadZ: 0.01,
+      fingerRingSpreadZ: -0.02,
+      fingerPinkySpreadZ: -0.05,
     },
   },
 };

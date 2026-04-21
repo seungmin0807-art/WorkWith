@@ -3,8 +3,9 @@ const VOICE_SCORE_THRESHOLD = 72;
 const VOICE_MIN_GAP_MS = 8000;
 const VOICE_REPEAT_GAP_MS = 14000;
 const VOICE_STABLE_FRAMES = 4;
-const PREP_PHASE_SEC = 9;
-const ACTIVE_EXERCISE_END_SEC = 51;
+const PREP_PHASE_SEC = 0;
+const ACTIVE_EXERCISE_END_SEC = Number.POSITIVE_INFINITY;
+const FEEDBACK_INTERVAL_SEC = 3;
 const MEDIA_CACHE_BUST = "analysis-runtime-v2";
 const USER_VIDEO_CACHE_BUST = "user-video-overlay-v2";
 const USER_VIDEO_DRIFT_TOLERANCE_SEC = 0.12;
@@ -52,6 +53,39 @@ const LIVE_METRIC_COPY = {
   posterior_chain_score: {
     label: "엉덩이·햄스트링 사용",
     detail: "엉덩이와 허벅지 뒤쪽이 함께 쓰이는지",
+  },
+};
+
+const ISSUE_FEEDBACK_COPY = {
+  hip_hinge: {
+    label: "골반 힌지 보완",
+    coachText: "엉덩이를 먼저 뒤로 보내고 상체 길이를 유지하세요.",
+    summaryText: "고관절이 먼저 접히지 않아 상체와 무릎 보상이 커지고 있습니다.",
+  },
+  knee_drive: {
+    label: "무릎 전진 제어",
+    coachText: "무릎만 먼저 밀지 말고 엉덩이와 발 중앙 압력을 함께 쓰세요.",
+    summaryText: "하중이 앞쪽으로 쏠리면서 무릎 전방 이동이 커지고 있습니다.",
+  },
+  balance: {
+    label: "중심선 안정",
+    coachText: "좌우 발바닥 압력을 고르게 유지하고 몸통 흔들림을 줄이세요.",
+    summaryText: "상체와 골반 중심선이 좌우로 흔들리고 있습니다.",
+  },
+  heel_pressure: {
+    label: "뒤꿈치 지지 확보",
+    coachText: "뒤꿈치와 발 중앙으로 바닥을 눌러 버티세요.",
+    summaryText: "발 앞쪽으로 체중이 쏠려 뒤꿈치 지지가 약해지고 있습니다.",
+  },
+  posterior_chain: {
+    label: "둔근-햄스트링 사용",
+    coachText: "내려갈 때 엉덩이를 더 뒤로 빼서 뒤사슬을 먼저 쓰세요.",
+    summaryText: "둔근과 햄스트링 사용이 적어 무릎과 상체 보상이 커집니다.",
+  },
+  default: {
+    label: "자세 보정",
+    coachText: "현재 흔들리는 부위를 먼저 안정시키고 리듬을 일정하게 유지하세요.",
+    summaryText: "현재 구간의 주요 자세 편차를 기준으로 보정 포인트를 표시합니다.",
   },
 };
 
@@ -126,6 +160,9 @@ const state = {
     active: false,
     startSec: 4,
     endSec: 8,
+  },
+  feedback: {
+    schedule: [],
   },
 };
 
@@ -806,6 +843,7 @@ function ensureUserVideoSource() {
           state.media.userVideoDurationSec,
           Number.isFinite(PLAYBACK_TUNING.fallbackDurationSec) ? PLAYBACK_TUNING.fallbackDurationSec : USER_FALLBACK_DURATION_SEC,
         );
+    buildFeedbackSchedule();
     applyUserVideoTuning();
     buildTimeline();
     const frame = getSourceFrameForPlaybackIndex(state.player.index) || state.data?.frames?.[0];
@@ -1068,13 +1106,120 @@ function findNearestFrameIndex(timeSec) {
 }
 
 function getHotJointNames(frame, issueId = null) {
-  const names = new Set(frame?.highlighted_joint_names || []);
-  if (issueId) {
-    const primarySide = getUserInputVideoMeta().primary_side || "left";
-    const resolver = ISSUE_HOT_NAMES[issueId];
-    (resolver ? resolver(primarySide) : []).forEach((name) => names.add(name));
-  }
+  const names = new Set();
+  if (!issueId) return names;
+  const primarySide = getUserInputVideoMeta().primary_side || "left";
+  const resolver = ISSUE_HOT_NAMES[issueId];
+  (resolver ? resolver(primarySide) : []).forEach((name) => names.add(name));
   return names;
+}
+
+function getFeedbackCopy(issueId) {
+  return ISSUE_FEEDBACK_COPY[issueId] || ISSUE_FEEDBACK_COPY.default;
+}
+
+function summarizeIssueWindow(frames) {
+  const issueMap = new Map();
+  (frames || []).forEach((frame) => {
+    (frame.issues || []).forEach((issue) => {
+      const current = issueMap.get(issue.id) || {
+        id: issue.id,
+        label: issue.label,
+        severitySum: 0,
+        count: 0,
+      };
+      current.severitySum += issue.severity || 0;
+      current.count += 1;
+      issueMap.set(issue.id, current);
+    });
+  });
+
+  const topIssue = [...issueMap.values()]
+    .map((issue) => ({
+      id: issue.id,
+      label: issue.label,
+      severity: issue.count ? issue.severitySum / issue.count : 0,
+    }))
+    .sort((a, b) => b.severity - a.severity)[0] || null;
+
+  if (!topIssue) {
+    return null;
+  }
+
+  const copy = getFeedbackCopy(topIssue.id);
+  return {
+    issueId: topIssue.id,
+    label: copy.label || topIssue.label,
+    coachText: copy.coachText,
+    summaryText: copy.summaryText,
+    highlightedJointNames: [...getHotJointNames(null, topIssue.id)],
+    severity: topIssue.severity,
+  };
+}
+
+function buildFeedbackSchedule() {
+  const durationSec = getPlaybackDurationSec();
+  const frames = state.data?.frames || [];
+  const schedule = [];
+  if (!frames.length || !Number.isFinite(durationSec) || durationSec <= 0) {
+    state.feedback.schedule = schedule;
+    return;
+  }
+
+  for (let startSec = 0; startSec < durationSec; startSec += FEEDBACK_INTERVAL_SEC) {
+    const endSec = Math.min(durationSec, startSec + FEEDBACK_INTERVAL_SEC);
+    const sourceStartSec = mapPlaybackTimeToSourceTime(startSec);
+    const sourceEndSec = mapPlaybackTimeToSourceTime(endSec);
+    const windowFrames = frames.filter((frame) => frame.time_sec >= sourceStartSec && frame.time_sec < sourceEndSec + 1e-6);
+    const feedback = summarizeIssueWindow(windowFrames);
+    schedule.push({
+      startSec,
+      endSec,
+      ...(feedback || {
+        issueId: null,
+        label: "자세 안정 구간",
+        coachText: "현재 구간은 큰 편차 없이 유지되고 있습니다.",
+        summaryText: "다음 3초 구간에서 더 중요한 편차가 있으면 자동으로 바뀝니다.",
+        highlightedJointNames: [],
+        severity: 0,
+      }),
+    });
+  }
+
+  state.feedback.schedule = schedule;
+}
+
+function getScheduledFeedback(playbackTimeSec, frame) {
+  const schedule = state.feedback.schedule || [];
+  if (schedule.length) {
+    const windowIndex = Math.min(
+      schedule.length - 1,
+      Math.max(0, Math.floor(Math.max(playbackTimeSec, 0) / FEEDBACK_INTERVAL_SEC)),
+    );
+    return schedule[windowIndex];
+  }
+
+  const fallbackIssue = (frame?.issues || [])[0] || null;
+  if (!fallbackIssue) {
+    return {
+      issueId: null,
+      label: "자세 안정 구간",
+      coachText: "현재 구간은 큰 편차 없이 유지되고 있습니다.",
+      summaryText: "다음 구간에서 편차가 보이면 자동으로 보정 포인트를 표시합니다.",
+      highlightedJointNames: [],
+      severity: 0,
+    };
+  }
+
+  const copy = getFeedbackCopy(fallbackIssue.id);
+  return {
+    issueId: fallbackIssue.id,
+    label: copy.label || fallbackIssue.label,
+    coachText: copy.coachText,
+    summaryText: copy.summaryText,
+    highlightedJointNames: [...getHotJointNames(frame, fallbackIssue.id)],
+    severity: fallbackIssue.severity || 0,
+  };
 }
 
 function renderIssueList() {
@@ -1257,13 +1402,6 @@ function formatPhase(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
   if (state.highlight.active) {
     return `하이라이트 다시보기 · ${Math.max(0, Math.ceil(state.highlight.endSec - playbackTimeSec))}초`;
   }
-  if (!isReportPass() && isPrepFrame(frame)) {
-    return `준비 구간 · ${PREP_PHASE_SEC}초 뒤 분석 시작`;
-  }
-
-  if (!isReportPass() && isAfterExerciseFrame(frame)) {
-    return "정리 구간 · 반복 수 집계 종료";
-  }
 
   const labels = {
     descent: "내려가기",
@@ -1329,7 +1467,12 @@ function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
   };
   const displayedScore = bucket.avgScore;
   const topIssue = bucket.topIssue || (frame.issues || [])[0] || null;
-  const warningIssue = topIssue && displayedScore <= WARNING_SCORE_THRESHOLD ? topIssue : null;
+  const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
+  const effectiveIssueId = scheduledFeedback.issueId || topIssue?.id || null;
+  const effectiveIssueLabel = scheduledFeedback.label || topIssue?.label || "자세 비교 중";
+  const warningIssue = effectiveIssueId && displayedScore <= WARNING_SCORE_THRESHOLD
+    ? { id: effectiveIssueId, label: effectiveIssueLabel, severity: scheduledFeedback.severity || topIssue?.severity || 0 }
+    : null;
   const reportReady = isReportPass();
   syncHighlightButton();
   const liveActive = isActiveExerciseFrame(frame);
@@ -1399,16 +1542,14 @@ function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
   elements.repCount.textContent = `${reportReady ? getReportRepCount() : bucket.repCount}`;
   elements.matchValue.textContent = `${Math.round(reportReady ? finalMatchScore : displayedScore)}점`;
   elements.issueCount.textContent = `${reportReady ? reportFindings.length : bucket.issueCount}`;
-  elements.currentIssue.textContent = reportReady ? report.headline : topIssue?.label || "자세 비교 중";
+  elements.currentIssue.textContent = reportReady ? report.headline : effectiveIssueLabel;
   elements.phaseLabel.textContent = formatPhase(frame, playbackTimeSec);
   elements.coachText.textContent = reportReady
     ? `${reportFocus} 중심으로 종합 평가를 정리했습니다.`
-    : topIssue
-      ? `${topIssue.label}을 우선 확인하고 있습니다.`
-      : "골반과 왼쪽 어깨를 중심으로 자세를 비교하고 있습니다.";
+    : scheduledFeedback.coachText;
   elements.summaryText.textContent = reportReady
     ? "전문의와 트레이너 관점 평가는 아래에서 확인할 수 있습니다."
-    : "실시간 수치는 현재 값과 기준값의 차이를 함께 보여줍니다.";
+    : scheduledFeedback.summaryText;
 
   renderMetrics(reportReady ? [] : getLiveMetrics(bucket.metrics));
   renderFinalMetrics(reportReady);
@@ -1418,10 +1559,10 @@ function updateFrame(frame, playbackTimeSec = state.player.playbackTimeSec || 0)
 
   elements.reportStatus.textContent = reportReady ? "평가 완료" : "비교 중";
   elements.reportStatus.classList.toggle("ready", reportReady);
-  elements.reportFindingTitle.textContent = reportReady ? reportFocus || "핵심 이슈 정리" : topIssue?.label || "비교 중";
+  elements.reportFindingTitle.textContent = reportReady ? reportFocus || "핵심 이슈 정리" : effectiveIssueLabel;
   elements.reportFindingCopy.textContent = reportReady ? report.summary : "";
   elements.reportGuideTitle.textContent = reportReady ? (topFinding?.label || "다음 세트 가이드") : "현재 안내";
-  elements.reportGuideCopy.textContent = reportReady ? guideLine : "";
+  elements.reportGuideCopy.textContent = reportReady ? guideLine : scheduledFeedback.coachText;
   elements.medicalStatus.textContent = reportReady ? report.medical_status : "비교 중";
   elements.medicalDetail.textContent = reportReady
     ? "무릎이 먼저 전진하고 뒤꿈치 지지가 약해 관절 전면 부담이 커질 수 있습니다. 깊이를 조금 줄이고 안정성을 먼저 확보하세요."
@@ -1671,11 +1812,12 @@ function initAvatarScene() {
 
 function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
   if (!frame || !window.WorkWithAvatarScene?.update) return;
+  const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
   window.WorkWithAvatarScene.update(frame, {
     playbackTimeSec,
     playbackDurationSec: getPlaybackDurationSec(),
     reportReady: isReportPass(),
-    highlightedJointNames: frame.highlighted_joint_names || [],
+    highlightedJointNames: scheduledFeedback.highlightedJointNames || [],
   });
 }
 
@@ -1696,6 +1838,7 @@ async function bootstrap() {
   state.descentSegments = buildDescentSegments(state.data.frames);
   state.scoreBuckets = buildScoreBuckets(state.data.frames);
   state.analysisBuckets = buildAnalysisBuckets(state.data.frames);
+  buildFeedbackSchedule();
   state.player.fps = getUserInputVideoMeta().sampled_fps || 10;
   ensureUserVideoSource();
 

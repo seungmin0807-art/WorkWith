@@ -13,7 +13,7 @@
   const QUERY = new URLSearchParams(window.location.search);
   const DEBUG_SKELETON = QUERY.get("debugSkeleton") === "1";
   const DEBUG_RETARGET = QUERY.get("debugRetarget") === "1";
-  const ASSET_VERSION = "20260421-bvh14";
+  const ASSET_VERSION = "20260421-bvh15";
   const TUNING = window.WORKWITH_TUNING || {};
   const AVATAR_TUNING = TUNING.avatar || {};
 
@@ -141,76 +141,124 @@
     "foot.R": ["foot.R", "toe.R", "heel.02.R"],
   };
 
-  const OPEN_HAND_POSE_ROTATIONS = {
+  const HAND_POSE_ROTATIONS = {
     "hand.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.wristBackBendX, 0.72),
-      z: tunedNumber(AVATAR_TUNING.hands?.wristSplayZ, 0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.wristBendX, 0.16),
+      z: tunedNumber(AVATAR_TUNING.hands?.wristSplayZ, 0.03),
     },
     "thumb.01.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.thumbBaseX, -0.08),
-      y: tunedNumber(AVATAR_TUNING.hands?.thumbBaseY, 0.18),
-      z: tunedNumber(AVATAR_TUNING.hands?.thumbBaseZ, 0.34),
+      x: tunedNumber(AVATAR_TUNING.hands?.thumbBaseX, 0.2),
+      y: tunedNumber(AVATAR_TUNING.hands?.thumbBaseY, 0.62),
+      z: tunedNumber(AVATAR_TUNING.hands?.thumbBaseZ, 0.56),
     },
     "thumb.02.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.thumbMidX, -0.04),
-      y: tunedNumber(AVATAR_TUNING.hands?.thumbMidY, 0.08),
-      z: tunedNumber(AVATAR_TUNING.hands?.thumbMidZ, 0.16),
+      x: tunedNumber(AVATAR_TUNING.hands?.thumbMidX, 0.16),
+      y: tunedNumber(AVATAR_TUNING.hands?.thumbMidY, 0.32),
+      z: tunedNumber(AVATAR_TUNING.hands?.thumbMidZ, 0.28),
     },
     "thumb.03.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.thumbTipX, -0.02),
-      y: tunedNumber(AVATAR_TUNING.hands?.thumbTipY, 0.03),
-      z: tunedNumber(AVATAR_TUNING.hands?.thumbTipZ, 0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.thumbTipX, 0.12),
+      y: tunedNumber(AVATAR_TUNING.hands?.thumbTipY, 0.16),
+      z: tunedNumber(AVATAR_TUNING.hands?.thumbTipZ, 0.14),
     },
     "f_index.01.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1),
-      z: tunedNumber(AVATAR_TUNING.hands?.fingerIndexSpreadZ, 0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: tunedNumber(AVATAR_TUNING.hands?.fingerIndexSpreadZ, 0.04),
+    },
+    "f_index.02.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_index.03.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "f_middle.01.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1) * 0.8,
-      z: tunedNumber(AVATAR_TUNING.hands?.fingerMiddleSpreadZ, 0.03),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: tunedNumber(AVATAR_TUNING.hands?.fingerMiddleSpreadZ, 0.01),
+    },
+    "f_middle.02.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_middle.03.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "f_ring.01.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1),
-      z: tunedNumber(AVATAR_TUNING.hands?.fingerRingSpreadZ, -0.03),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: tunedNumber(AVATAR_TUNING.hands?.fingerRingSpreadZ, -0.02),
+    },
+    "f_ring.02.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_ring.03.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "f_pinky.01.L": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1) * 1.2,
-      z: tunedNumber(AVATAR_TUNING.hands?.fingerPinkySpreadZ, -0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: tunedNumber(AVATAR_TUNING.hands?.fingerPinkySpreadZ, -0.05),
+    },
+    "f_pinky.02.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_pinky.03.L": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "hand.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.wristBackBendX, 0.72),
-      z: -tunedNumber(AVATAR_TUNING.hands?.wristSplayZ, 0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.wristBendX, 0.16),
+      z: -tunedNumber(AVATAR_TUNING.hands?.wristSplayZ, 0.03),
     },
     "thumb.01.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.thumbBaseX, -0.08),
-      y: -tunedNumber(AVATAR_TUNING.hands?.thumbBaseY, 0.18),
-      z: -tunedNumber(AVATAR_TUNING.hands?.thumbBaseZ, 0.34),
+      x: tunedNumber(AVATAR_TUNING.hands?.thumbBaseX, 0.2),
+      y: -tunedNumber(AVATAR_TUNING.hands?.thumbBaseY, 0.62),
+      z: -tunedNumber(AVATAR_TUNING.hands?.thumbBaseZ, 0.56),
     },
     "thumb.02.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.thumbMidX, -0.04),
-      y: -tunedNumber(AVATAR_TUNING.hands?.thumbMidY, 0.08),
-      z: -tunedNumber(AVATAR_TUNING.hands?.thumbMidZ, 0.16),
+      x: tunedNumber(AVATAR_TUNING.hands?.thumbMidX, 0.16),
+      y: -tunedNumber(AVATAR_TUNING.hands?.thumbMidY, 0.32),
+      z: -tunedNumber(AVATAR_TUNING.hands?.thumbMidZ, 0.28),
     },
     "thumb.03.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.thumbTipX, -0.02),
-      y: -tunedNumber(AVATAR_TUNING.hands?.thumbTipY, 0.03),
-      z: -tunedNumber(AVATAR_TUNING.hands?.thumbTipZ, 0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.thumbTipX, 0.12),
+      y: -tunedNumber(AVATAR_TUNING.hands?.thumbTipY, 0.16),
+      z: -tunedNumber(AVATAR_TUNING.hands?.thumbTipZ, 0.14),
     },
     "f_index.01.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1),
-      z: -tunedNumber(AVATAR_TUNING.hands?.fingerIndexSpreadZ, 0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: -tunedNumber(AVATAR_TUNING.hands?.fingerIndexSpreadZ, 0.04),
+    },
+    "f_index.02.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_index.03.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "f_middle.01.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1) * 0.8,
-      z: -tunedNumber(AVATAR_TUNING.hands?.fingerMiddleSpreadZ, 0.03),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: -tunedNumber(AVATAR_TUNING.hands?.fingerMiddleSpreadZ, 0.01),
+    },
+    "f_middle.02.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_middle.03.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "f_ring.01.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1),
-      z: -tunedNumber(AVATAR_TUNING.hands?.fingerRingSpreadZ, -0.03),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: -tunedNumber(AVATAR_TUNING.hands?.fingerRingSpreadZ, -0.02),
+    },
+    "f_ring.02.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_ring.03.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
     "f_pinky.01.R": {
-      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseBendX, -0.1) * 1.2,
-      z: -tunedNumber(AVATAR_TUNING.hands?.fingerPinkySpreadZ, -0.08),
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerBaseCurlX, 1.16),
+      z: -tunedNumber(AVATAR_TUNING.hands?.fingerPinkySpreadZ, -0.05),
+    },
+    "f_pinky.02.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerMidCurlX, 0.98),
+    },
+    "f_pinky.03.R": {
+      x: tunedNumber(AVATAR_TUNING.hands?.fingerTipCurlX, 0.82),
     },
   };
 
@@ -944,7 +992,7 @@
     }
 
     applyHandPose(rig) {
-      Object.entries(OPEN_HAND_POSE_ROTATIONS).forEach(([boneName, rotation]) => {
+      Object.entries(HAND_POSE_ROTATIONS).forEach(([boneName, rotation]) => {
         const entry = rig.bones.get(boneName);
         if (!entry) return;
         entry.bone.quaternion.copy(entry.restQuaternion);
