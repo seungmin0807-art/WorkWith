@@ -27,6 +27,15 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      # Copy the web app INTO the ios project tree so XcodeGen can
+      # include it as a folder-reference resource — no Run Script needed.
+      - name: Copy web app into iOS project
+        run: |
+          rm -rf ios/BundledApp
+          rsync -a --exclude '.DS_Store' --exclude 'tools' app/ ios/BundledApp/
+          echo "--- BundledApp contents ---"
+          ls -R ios/BundledApp | head -40
+
       - name: Generate Xcode project
         run: xcodegen generate --spec ios/project.yml --project ios
 
@@ -44,6 +53,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath ios/build \
+            ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -54,11 +64,9 @@ jobs:
         if: failure()
         run: |
           if [ -f ios/artifact/build.log ]; then
-            EXCERPT="$(tail -n 80 ios/artifact/build.log | tr '\r' '\n' | sed '/^$/d' | tail -n 30)"
-            EXCERPT="${EXCERPT//'%'/'%25'}"
-            EXCERPT="${EXCERPT//$'\n'/'%0A'}"
-            EXCERPT="${EXCERPT//$'\r'/'%0D'}"
-            echo "::error::${EXCERPT}"
+            echo "::group::Build log (last 60 lines)"
+            tail -n 60 ios/artifact/build.log
+            echo "::endgroup::"
           else
             echo "::error::build.log was not created"
           fi
@@ -69,20 +77,13 @@ jobs:
           APP_PATH="$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'WorkWith.app' | head -n 1)"
 
           if [ -z "$APP_PATH" ]; then
-            echo "WorkWith.app not found"
+            echo "WorkWith.app not found in build products"
+            find ios/build -type d -name '*.app' || true
             exit 1
           fi
 
-          rm -rf ios/artifact
           mkdir -p ios/artifact/Payload
           cp -R "$APP_PATH" ios/artifact/Payload/
-
-          cat <<'EOF' > ios/artifact/INSTALL.txt
-          1. Download the artifact zip from this workflow run.
-          2. Extract it and drag WorkWith-unsigned.ipa into Sideloadly.
-          3. Sign in with your Apple ID inside Sideloadly and press Start.
-          4. On iPhone, trust the developer app under Settings > General > VPN & Device Management.
-          EOF
 
           ditto -c -k --sequesterRsrc --keepParent ios/artifact/Payload ios/artifact/WorkWith-unsigned.ipa
 
@@ -93,8 +94,7 @@ jobs:
           name: WorkWith-unsigned-ipa
           path: |
             ios/artifact/WorkWith-unsigned.ipa
-            ios/artifact/INSTALL.txt
             ios/artifact/project-list.txt
             ios/artifact/build.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7

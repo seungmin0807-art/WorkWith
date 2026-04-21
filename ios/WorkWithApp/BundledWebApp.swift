@@ -5,18 +5,16 @@ struct BundledWebApp {
   let readAccessURL: URL
 
   static func locate() -> BundledWebApp? {
-    guard let webAppDirectoryURL = Bundle.main.resourceURL?.appendingPathComponent("app", isDirectory: true) else {
-      return nil
+    // XcodeGen folder references keep the folder name as-is inside the bundle.
+    // We try "BundledApp" (CI build) first, then "app" (legacy / manual).
+    let candidates = ["BundledApp", "app"]
+    for name in candidates {
+      guard let dir = Bundle.main.resourceURL?.appendingPathComponent(name, isDirectory: true) else { continue }
+      let indexURL = dir.appendingPathComponent("index.html")
+      if FileManager.default.fileExists(atPath: indexURL.path) {
+        return BundledWebApp(entryURL: indexURL, readAccessURL: dir)
+      }
     }
-
-    let indexURL = webAppDirectoryURL.appendingPathComponent("index.html")
-    guard FileManager.default.fileExists(atPath: indexURL.path) else {
-      return nil
-    }
-
-    return BundledWebApp(
-      entryURL: indexURL,
-      readAccessURL: webAppDirectoryURL
-    )
+    return nil
   }
 }

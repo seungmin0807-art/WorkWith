@@ -27,25 +27,8 @@ targets:
           - Assets.xcassets
     resources:
       - path: WorkWithApp/Assets.xcassets
-    preBuildScripts:
-      - name: Bundle Web App
-        basedOnDependencyAnalysis: false
-        script: |
-          set -euo pipefail
-          SRC_APP_DIR="${PROJECT_DIR}/../app"
-          DEST_APP_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/app"
-
-          if [ ! -d "$SRC_APP_DIR" ]; then
-            echo "Missing web app directory at $SRC_APP_DIR"
-            exit 1
-          fi
-
-          rm -rf "$DEST_APP_DIR"
-          mkdir -p "$DEST_APP_DIR"
-          rsync -a --delete \
-            --exclude '.DS_Store' \
-            --exclude 'tools' \
-            "$SRC_APP_DIR/" "$DEST_APP_DIR/"
+      - path: BundledApp
+        type: folder
 
 schemes:
   WorkWith:
