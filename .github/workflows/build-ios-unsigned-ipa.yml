@@ -27,6 +27,28 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Prepare iOS app icon assets
+        run: |
+          set -euo pipefail
+          ICON_SRC="app/icons/icon.png"
+          ICON_DIR="ios/WorkWithApp/Assets.xcassets/AppIcon.appiconset"
+
+          if [ ! -f "$ICON_SRC" ]; then
+            echo "::error::Missing app icon source at $ICON_SRC"
+            exit 1
+          fi
+
+          mkdir -p "$ICON_DIR"
+          sips -z 40 40 "$ICON_SRC" --out "$ICON_DIR/AppIcon-40.png" >/dev/null
+          sips -z 60 60 "$ICON_SRC" --out "$ICON_DIR/AppIcon-60.png" >/dev/null
+          sips -z 58 58 "$ICON_SRC" --out "$ICON_DIR/AppIcon-58.png" >/dev/null
+          sips -z 87 87 "$ICON_SRC" --out "$ICON_DIR/AppIcon-87.png" >/dev/null
+          sips -z 80 80 "$ICON_SRC" --out "$ICON_DIR/AppIcon-80.png" >/dev/null
+          sips -z 120 120 "$ICON_SRC" --out "$ICON_DIR/AppIcon-120.png" >/dev/null
+          sips -z 120 120 "$ICON_SRC" --out "$ICON_DIR/AppIcon-120-large.png" >/dev/null
+          sips -z 180 180 "$ICON_SRC" --out "$ICON_DIR/AppIcon-180.png" >/dev/null
+          sips -z 1024 1024 "$ICON_SRC" --out "$ICON_DIR/AppIcon-1024.png" >/dev/null
+
       # Copy the web app INTO the ios project tree so XcodeGen can
       # include it as a folder-reference resource — no Run Script needed.
       - name: Copy web app into iOS project
@@ -81,6 +103,35 @@ jobs:
             find ios/build -type d -name '*.app' || true
             exit 1
           fi
+
+          if [ ! -f "$APP_PATH/BundledApp/index.html" ]; then
+            echo "BundledApp was not copied by Xcode resources; copying it into the app bundle now."
+            rm -rf "$APP_PATH/BundledApp"
+            cp -R ios/BundledApp "$APP_PATH/BundledApp"
+          fi
+
+          if [ ! -f "$APP_PATH/BundledApp/index.html" ]; then
+            echo "::error::BundledApp/index.html is missing from WorkWith.app"
+            find "$APP_PATH" -maxdepth 2 -type f | sort | head -80
+            exit 1
+          fi
+
+          if [ ! -f "$APP_PATH/Assets.car" ]; then
+            echo "::error::Assets.car is missing, so the iOS app icon cannot be installed correctly"
+            find "$APP_PATH" -maxdepth 2 -type f | sort | head -80
+            exit 1
+          fi
+
+          if ! xcrun assetutil --info "$APP_PATH/Assets.car" | grep -q '"Name" : "AppIcon"'; then
+            echo "::error::Assets.car does not contain the AppIcon asset"
+            xcrun assetutil --info "$APP_PATH/Assets.car" | head -120
+            exit 1
+          fi
+
+          echo "--- WorkWith.app sanity check ---"
+          du -sh "$APP_PATH"
+          du -sh "$APP_PATH/BundledApp"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" "$APP_PATH/Info.plist" || true
 
           mkdir -p ios/artifact/Payload
           cp -R "$APP_PATH" ios/artifact/Payload/

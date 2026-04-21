@@ -25,10 +25,7 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: WorkWithApp
-        excludes:
-          - Assets.xcassets
     resources:
-      - path: WorkWithApp/Assets.xcassets
       - path: BundledApp
         type: folder
 
