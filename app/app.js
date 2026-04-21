@@ -6,6 +6,7 @@ const VOICE_STABLE_FRAMES = 4;
 const PREP_PHASE_SEC = 0;
 const ACTIVE_EXERCISE_END_SEC = Number.POSITIVE_INFINITY;
 const FEEDBACK_INTERVAL_SEC = 3;
+const HIGHLIGHT_FLASH_DURATION_SEC = 0.75;
 const MEDIA_CACHE_BUST = "analysis-runtime-v2";
 const USER_VIDEO_CACHE_BUST = "user-video-overlay-v2";
 const USER_VIDEO_DRIFT_TOLERANCE_SEC = 0.12;
@@ -26,12 +27,13 @@ const PRIMARY_METRIC_IDS = new Set([
 ]);
 
 const ISSUE_HOT_NAMES = {
-  hip_hinge: (side) => [`${side}_hip`, `${side}_shoulder`, `${side}_knee`],
-  knee_drive: (side) => [`${side}_hip`, `${side}_knee`, `${side}_ankle`, `${side}_foot_index`],
-  balance: () => ["left_shoulder", "right_shoulder", "left_hip", "right_hip"],
-  heel_pressure: (side) => [`${side}_ankle`, `${side}_heel`, `${side}_foot_index`],
-  posterior_chain: (side) => [`${side}_hip`, `${side}_knee`, `${side}_heel`],
+  hip_hinge: (side) => [`${side}_hip`, `${side}_knee`],
+  knee_drive: (side) => [`${side}_hip`, `${side}_knee`],
+  balance: () => ["left_hip", "right_hip", "left_knee", "right_knee"],
+  heel_pressure: (side) => [`${side}_hip`, `${side}_knee`],
+  posterior_chain: (side) => [`${side}_hip`, `${side}_knee`],
 };
+const HIGHLIGHT_ALLOWED_JOINTS = new Set(["left_hip", "right_hip", "left_knee", "right_knee"]);
 
 const LIVE_METRIC_COPY = {
   match_rate: {
@@ -1110,8 +1112,18 @@ function getHotJointNames(frame, issueId = null) {
   if (!issueId) return names;
   const primarySide = getUserInputVideoMeta().primary_side || "left";
   const resolver = ISSUE_HOT_NAMES[issueId];
-  (resolver ? resolver(primarySide) : []).forEach((name) => names.add(name));
+  (resolver ? resolver(primarySide) : []).forEach((name) => {
+    if (HIGHLIGHT_ALLOWED_JOINTS.has(name)) {
+      names.add(name);
+    }
+  });
   return names;
+}
+
+function getTimedHighlightJointNames(playbackTimeSec, names = []) {
+  const phaseSec = ((playbackTimeSec % FEEDBACK_INTERVAL_SEC) + FEEDBACK_INTERVAL_SEC) % FEEDBACK_INTERVAL_SEC;
+  if (phaseSec > HIGHLIGHT_FLASH_DURATION_SEC) return [];
+  return names.filter((name) => HIGHLIGHT_ALLOWED_JOINTS.has(name));
 }
 
 function getFeedbackCopy(issueId) {
@@ -1813,11 +1825,15 @@ function initAvatarScene() {
 function updateAvatarScene(frame, playbackTimeSec = state.player.playbackTimeSec || 0) {
   if (!frame || !window.WorkWithAvatarScene?.update) return;
   const scheduledFeedback = getScheduledFeedback(playbackTimeSec, frame);
+  const highlightedJointNames = getTimedHighlightJointNames(
+    playbackTimeSec,
+    scheduledFeedback.highlightedJointNames || [],
+  );
   window.WorkWithAvatarScene.update(frame, {
     playbackTimeSec,
     playbackDurationSec: getPlaybackDurationSec(),
     reportReady: isReportPass(),
-    highlightedJointNames: scheduledFeedback.highlightedJointNames || [],
+    highlightedJointNames,
   });
 }
 

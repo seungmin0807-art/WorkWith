@@ -13,7 +13,7 @@
   const QUERY = new URLSearchParams(window.location.search);
   const DEBUG_SKELETON = QUERY.get("debugSkeleton") === "1";
   const DEBUG_RETARGET = QUERY.get("debugRetarget") === "1";
-  const ASSET_VERSION = "20260421-bvh15";
+  const ASSET_VERSION = "20260421-bvh20";
   const TUNING = window.WORKWITH_TUNING || {};
   const AVATAR_TUNING = TUNING.avatar || {};
 
@@ -90,6 +90,11 @@
     right_heel: "foot.R",
     right_foot_index: "foot.R",
   };
+  const HIGHLIGHT_ALLOWED_JOINTS = new Set(["left_hip", "right_hip", "left_knee", "right_knee"]);
+  const HIGHLIGHT_KNEE_BENT_MAX_ANGLE_DEG = tunedNumber(
+    AVATAR_TUNING.highlights?.kneeBentMaxAngleDeg,
+    150,
+  );
 
   const HIGHLIGHT_REGION_BONES = {
     "spine.004": ["spine.003", "spine.004", "spine.005"],
@@ -262,13 +267,13 @@
     },
   };
 
-  const STANCE_POSITION_OFFSETS = {
-    "shin.L": { x: tunedNumber(AVATAR_TUNING.stance?.shinSpread, 0.0) },
-    "shin.R": { x: -tunedNumber(AVATAR_TUNING.stance?.shinSpread, 0.0) },
-    "foot.L": { x: tunedNumber(AVATAR_TUNING.stance?.footSpread, 0.075) },
-    "foot.R": { x: -tunedNumber(AVATAR_TUNING.stance?.footSpread, 0.075) },
-    "toe.L": { x: tunedNumber(AVATAR_TUNING.stance?.toeSpread, 0.03) },
-    "toe.R": { x: -tunedNumber(AVATAR_TUNING.stance?.toeSpread, 0.03) },
+  const STANCE_DIRECTION_OFFSETS = {
+    "thigh.L": { x: tunedNumber(AVATAR_TUNING.stance?.thighDirectionSpread, 0.0) },
+    "thigh.R": { x: -tunedNumber(AVATAR_TUNING.stance?.thighDirectionSpread, 0.0) },
+    "shin.L": { x: tunedNumber(AVATAR_TUNING.stance?.shinDirectionSpread, 0.0) },
+    "shin.R": { x: -tunedNumber(AVATAR_TUNING.stance?.shinDirectionSpread, 0.0) },
+    "foot.L": { x: tunedNumber(AVATAR_TUNING.stance?.footDirectionSpread, 0.0) },
+    "foot.R": { x: -tunedNumber(AVATAR_TUNING.stance?.footDirectionSpread, 0.0) },
   };
 
   const SHOULDER_POSITION_OFFSETS = {
@@ -286,14 +291,18 @@
     },
   };
 
+  const FOOT_TURN_Y = tunedNumber(AVATAR_TUNING.stance?.footTurnY, 0.0);
+  const TOE_TURN_Y = tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.12);
   const STANCE_ROTATION_OFFSETS = {
-    "foot.L": { y: -tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) },
-    "foot.R": { y: tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) },
-    "toe.L": { y: -tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) * 0.72 },
-    "toe.R": { y: tunedNumber(AVATAR_TUNING.stance?.toeTurnY, 0.16) * 0.72 },
+    "foot.L": { y: -FOOT_TURN_Y },
+    "foot.R": { y: FOOT_TURN_Y },
+    "toe.L": { y: -TOE_TURN_Y },
+    "toe.R": { y: TOE_TURN_Y },
   };
 
   const LOCK_FEET_TO_GROUND = AVATAR_TUNING.feet?.lockToGround !== false;
+  const KEEP_FEET_FLAT = AVATAR_TUNING.feet?.keepFlat !== false;
+  const FOOT_VERTICAL_INFLUENCE = tunedNumber(AVATAR_TUNING.feet?.verticalInfluence, 0.0);
 
   const BVH_SEGMENTS_TO_GLB = [
     ["hips", "Chest", "spine"],
@@ -967,6 +976,8 @@
         const direction = this.bvhVectorToAvatar(new THREE.Vector3().subVectors(to, from))
           .applyAxisAngle(BVH_AXIS.Y, MOTION_WORLD_ROTATION_Y);
         if (direction.lengthSq() <= 1e-8) return;
+        this.applyStanceDirectionOffset(glbName, direction);
+        this.stabilizeFootDirection(glbName, direction);
         this.pointBoneToward(rig, glbName, direction.normalize());
       });
       this.applyShoulderPose(rig);
@@ -1020,17 +1031,22 @@
       });
     }
 
-    applyStancePose(rig) {
-      Object.entries(STANCE_POSITION_OFFSETS).forEach(([boneName, offset]) => {
-        const entry = rig.bones.get(boneName);
-        if (!entry) return;
-        entry.bone.position.set(
-          entry.restPosition.x + (offset.x || 0),
-          entry.restPosition.y + (offset.y || 0),
-          entry.restPosition.z + (offset.z || 0),
-        );
-      });
+    applyStanceDirectionOffset(boneName, direction) {
+      const offset = STANCE_DIRECTION_OFFSETS[boneName];
+      if (!offset) return;
+      direction.x += offset.x || 0;
+      direction.y += offset.y || 0;
+      direction.z += offset.z || 0;
+    }
 
+    stabilizeFootDirection(boneName, direction) {
+      if (!KEEP_FEET_FLAT || !boneName.startsWith("foot.")) return;
+      const horizontalLength = Math.hypot(direction.x, direction.z);
+      if (horizontalLength <= 1e-6) return;
+      direction.y *= FOOT_VERTICAL_INFLUENCE;
+    }
+
+    applyStancePose(rig) {
       Object.entries(STANCE_ROTATION_OFFSETS).forEach(([boneName, rotation]) => {
         const entry = rig.bones.get(boneName);
         if (!entry) return;
@@ -1127,10 +1143,29 @@
       return String(Math.round(THREE.MathUtils.radToDeg(radians)));
     }
 
+    isUserKneeBent() {
+      const userRig = this.rigs.user;
+      if (!userRig) return false;
+      const angles = [
+        Number(this.measureBoneAngle(userRig, "thigh.L", "shin.L", "foot.L")),
+        Number(this.measureBoneAngle(userRig, "thigh.R", "shin.R", "foot.R")),
+      ].filter((angle) => Number.isFinite(angle));
+      if (!angles.length) return false;
+      return Math.min(...angles) <= HIGHLIGHT_KNEE_BENT_MAX_ANGLE_DEG;
+    }
+
     updateHighlights(names) {
       const userRig = this.rigs.user;
       if (!userRig?.highlightRegions) return;
-      const activeRegions = new Set(names.map((name) => HIGHLIGHT_BONE_MAP[name]).filter(Boolean));
+      const kneeBent = this.isUserKneeBent();
+      const activeRegions = new Set(
+        kneeBent
+          ? names
+              .filter((name) => HIGHLIGHT_ALLOWED_JOINTS.has(name))
+              .map((name) => HIGHLIGHT_BONE_MAP[name])
+              .filter(Boolean)
+          : [],
+      );
       const pulse = 0.72 + Math.sin(this.clock.elapsedTime * 10.5) * 0.18;
 
       userRig.highlightRegions.forEach((entries, regionName) => {
