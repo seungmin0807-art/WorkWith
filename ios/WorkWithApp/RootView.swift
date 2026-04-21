@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct RootView: View {
   private let bundledWebApp = BundledWebApp.locate()
@@ -28,5 +29,18 @@ struct RootView: View {
         }
       }
     }
+    .task {
+      CameraPermissionPrimer.requestIfNeeded()
+    }
+  }
+}
+
+private enum CameraPermissionPrimer {
+  static func requestIfNeeded() {
+    guard AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined else {
+      return
+    }
+
+    AVCaptureDevice.requestAccess(for: .video) { _ in }
   }
 }
