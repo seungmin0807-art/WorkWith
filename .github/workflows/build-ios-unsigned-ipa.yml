@@ -50,6 +50,19 @@ jobs:
             DEVELOPMENT_TEAM="" \
             build | tee ios/artifact/build.log
 
+      - name: Emit build failure excerpt
+        if: failure()
+        run: |
+          if [ -f ios/artifact/build.log ]; then
+            EXCERPT="$(tail -n 80 ios/artifact/build.log | tr '\r' '\n' | sed '/^$/d' | tail -n 30)"
+            EXCERPT="${EXCERPT//'%'/'%25'}"
+            EXCERPT="${EXCERPT//$'\n'/'%0A'}"
+            EXCERPT="${EXCERPT//$'\r'/'%0D'}"
+            echo "::error::${EXCERPT}"
+          else
+            echo "::error::build.log was not created"
+          fi
+
       - name: Package unsigned IPA artifact
         run: |
           set -euo pipefail
