@@ -22,9 +22,14 @@ struct WorkWithWebView: UIViewRepresentable {
     webView.uiDelegate = context.coordinator
     webView.scrollView.contentInsetAdjustmentBehavior = .never
     webView.scrollView.bounces = false
-    webView.isOpaque = false
-    webView.backgroundColor = .black
+    webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    webView.isOpaque = true
+    webView.backgroundColor = UIColor(red: 244 / 255, green: 247 / 255, blue: 251 / 255, alpha: 1)
+    webView.scrollView.backgroundColor = webView.backgroundColor
     webView.allowsLinkPreview = false
+    if #available(iOS 15.0, *) {
+      webView.underPageBackgroundColor = webView.backgroundColor
+    }
 
     if #available(iOS 16.4, *) {
       webView.isInspectable = true

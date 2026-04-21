@@ -21,7 +21,7 @@
   <link rel="manifest" href="manifest.json?v=20260421-ios1">
   <link rel="apple-touch-icon" href="icons/icon.png?v=20260421-logo1">
   <link rel="icon" type="image/png" sizes="1024x1024" href="icons/icon.png?v=20260421-logo1">
-  <link rel="stylesheet" href="styles.css?v=20260422-removeglow1">
+  <link rel="stylesheet" href="styles.css?v=20260422-fullscreen1">
 </head>
 <body>
   <main id="launchExperience" class="launch-experience is-splashing" aria-label="WorkWith 시작">
@@ -421,11 +421,11 @@
   <script src="data/user-overlay-analysis.js?v=20260422-pwa1"></script>
   <script src="tuning.js?v=20260422-camera1"></script>
   <script src="avatar-scene.js?v=20260421-neck1"></script>
-  <script src="app.js?v=20260422-orientation1"></script>
+  <script src="app.js?v=20260422-fullscreen1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js?v=20260422-orientation1").catch(() => {});
+        navigator.serviceWorker.register("sw.js?v=20260422-fullscreen1").catch(() => {});
       });
     }
   </script>

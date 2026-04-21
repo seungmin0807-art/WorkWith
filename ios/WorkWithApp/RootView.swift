@@ -3,10 +3,11 @@ import AVFoundation
 
 struct RootView: View {
   private let bundledWebApp = BundledWebApp.locate()
+  private let appBackground = Color(red: 244 / 255, green: 247 / 255, blue: 251 / 255)
 
   var body: some View {
     ZStack {
-      Color.black
+      appBackground
         .ignoresSafeArea()
 
       if let bundledWebApp {
@@ -14,6 +15,7 @@ struct RootView: View {
           entryURL: bundledWebApp.entryURL,
           readAccessURL: bundledWebApp.readAccessURL
         )
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
           .ignoresSafeArea()
       } else {
         VStack(spacing: 16) {
@@ -29,6 +31,8 @@ struct RootView: View {
         }
       }
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(appBackground.ignoresSafeArea())
     .task {
       CameraPermissionPrimer.requestIfNeeded()
     }

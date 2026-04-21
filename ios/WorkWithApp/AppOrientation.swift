@@ -21,14 +21,14 @@ enum AppOrientationController {
     DispatchQueue.main.async {
       switch mode {
       case .portrait:
-        apply(mask: .portrait)
+        apply(mask: .portrait, orientation: .portrait)
       case .landscape:
-        apply(mask: .landscape)
+        apply(mask: .landscapeRight, orientation: .landscapeRight)
       }
     }
   }
 
-  private static func apply(mask: UIInterfaceOrientationMask) {
+  private static func apply(mask: UIInterfaceOrientationMask, orientation: UIInterfaceOrientation) {
     supportedOrientations = mask
 
     guard let windowScene = activeWindowScene() else {
@@ -41,6 +41,8 @@ enum AppOrientationController {
       print("WorkWith orientation request failed: \(error.localizedDescription)")
       #endif
     }
+    UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")
+    UIViewController.attemptRotationToDeviceOrientation()
   }
 
   private static func activeWindowScene() -> UIWindowScene? {
