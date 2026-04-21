@@ -7,3 +7,9 @@ __pycache__/
 python-installer.exe
 *.log
 scripts/__pycache__/
+ios/WorkWith.xcodeproj/
+ios/build/
+ios/.build/
+*.xcuserstate
+*.xcworkspace
+xcuserdata/

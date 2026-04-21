@@ -1,0 +1,86 @@
+name: Build iOS Unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-ios-unsigned-ipa.yml"
+      - "ios/**"
+      - "app/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec ios/project.yml
+
+      - name: Resolve Swift package dependencies
+        run: |
+          xcodebuild \
+            -project ios/WorkWith.xcodeproj \
+            -scheme WorkWith \
+            -resolvePackageDependencies
+
+      - name: Build iOS app without code signing
+        run: |
+          xcodebuild \
+            -project ios/WorkWith.xcodeproj \
+            -scheme WorkWith \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Package unsigned IPA artifact
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name 'WorkWith.app' | head -n 1)"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "WorkWith.app not found"
+            exit 1
+          fi
+
+          rm -rf ios/artifact
+          mkdir -p ios/artifact/Payload
+          cp -R "$APP_PATH" ios/artifact/Payload/
+
+          cat <<'EOF' > ios/artifact/INSTALL.txt
+          1. Download the artifact zip from this workflow run.
+          2. Extract it and drag WorkWith-unsigned.ipa into Sideloadly.
+          3. Sign in with your Apple ID inside Sideloadly and press Start.
+          4. On iPhone, trust the developer app under Settings > General > VPN & Device Management.
+          EOF
+
+          ditto -c -k --sequesterRsrc --keepParent ios/artifact/Payload ios/artifact/WorkWith-unsigned.ipa
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkWith-unsigned-ipa
+          path: |
+            ios/artifact/WorkWith-unsigned.ipa
+            ios/artifact/INSTALL.txt
+          if-no-files-found: error
+          retention-days: 7

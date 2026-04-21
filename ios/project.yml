@@ -1,0 +1,63 @@
+name: WorkWith
+options:
+  createIntermediateGroups: true
+  minimumXcodeGenVersion: 2.38.0
+
+packages:
+  GCDWebServer:
+    url: https://github.com/swisspol/GCDWebServer.git
+    from: 3.5.4
+
+settings:
+  base:
+    PRODUCT_NAME: WorkWith
+    PRODUCT_BUNDLE_IDENTIFIER: com.seungmin0807.workwith
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+    IPHONEOS_DEPLOYMENT_TARGET: 16.0
+    TARGETED_DEVICE_FAMILY: 1
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: WorkWith
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  WorkWith:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: WorkWithApp
+        excludes:
+          - Assets.xcassets
+    resources:
+      - path: WorkWithApp/Assets.xcassets
+    dependencies:
+      - package: GCDWebServer
+        product: GCDWebServer
+      - sdk: libz.tbd
+    preBuildScripts:
+      - name: Bundle Web App
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          SRC_APP_DIR="${PROJECT_DIR}/../app"
+          DEST_APP_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/app"
+
+          if [ ! -d "$SRC_APP_DIR" ]; then
+            echo "Missing web app directory at $SRC_APP_DIR"
+            exit 1
+          fi
+
+          rm -rf "$DEST_APP_DIR"
+          mkdir -p "$DEST_APP_DIR"
+          rsync -a --delete \
+            --exclude '.DS_Store' \
+            --exclude 'tools' \
+            "$SRC_APP_DIR/" "$DEST_APP_DIR/"
+
+schemes:
+  WorkWith:
+    build:
+      targets:
+        WorkWith: all
