@@ -1,5 +1,4 @@
 import Foundation
-import GCDWebServer
 
 @MainActor
 final class LocalWebServer: ObservableObject {
