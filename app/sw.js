@@ -1,4 +1,4 @@
-const CACHE_VERSION = "workwith-ios-pwa-v22";
+const CACHE_VERSION = "workwith-ios-pwa-v23";
 const CORE_CACHE = `${CACHE_VERSION}-core`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -7,16 +7,12 @@ const CORE_ASSETS = [
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./avatar-scene.js",
   "./tuning.js",
   "./manifest.json",
   "./data/session-data.js",
   "./data/session-data.json",
   "./data/user-overlay-analysis.js",
   "./data/user-overlay-analysis.json",
-  "./vendor/three.min.js",
-  "./vendor/GLTFLoader.js",
-  "./vendor/SkeletonUtils.js",
   "./icons/icon.png",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
