@@ -181,6 +181,7 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
+            TARGETED_DEVICE_FAMILY=1 \
             MARKETING_VERSION="$MARKETING_VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             build 2>&1 | tee ios/artifact/build.log
@@ -210,6 +211,19 @@ jobs:
             echo "::error::Assets.car is missing, so the iOS app icon cannot be installed correctly"
             exit 1
           fi
+
+          /usr/libexec/PlistBuddy -c "Delete :UIDeviceFamily" "$APP_PATH/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily array" "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :UIDeviceFamily:0 integer 1" "$APP_PATH/Info.plist"
+
+          /usr/libexec/PlistBuddy -c "Delete :UIRequiresFullScreen" "$APP_PATH/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :UIRequiresFullScreen bool true" "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Delete :UISupportedInterfaceOrientations~ipad" "$APP_PATH/Info.plist" || true
+
+          echo "--- iPhone-only Info.plist sanity check ---"
+          /usr/libexec/PlistBuddy -c "Print :UIDeviceFamily" "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :UIRequiresFullScreen" "$APP_PATH/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :UISupportedInterfaceOrientations" "$APP_PATH/Info.plist"
 
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
 
