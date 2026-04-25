@@ -1,0 +1,335 @@
+name: Build iOS Signed IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "CFBundleShortVersionString"
+        required: false
+        default: "1.0.0"
+      build_number:
+        description: "CFBundleVersion. Leave empty to use the GitHub run number."
+        required: false
+        default: ""
+      upload_to_testflight:
+        description: "Upload the signed IPA to App Store Connect/TestFlight."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-signed-ipa:
+    runs-on: macos-15
+
+    env:
+      BUNDLE_ID: com.seungmin0807.workwith
+      APP_NAME: WorkWith
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure build metadata
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER="${{ inputs.build_number }}"
+          if [ -z "$BUILD_NUMBER" ]; then
+            BUILD_NUMBER="${{ github.run_number }}"
+          fi
+
+          echo "MARKETING_VERSION=${{ inputs.marketing_version }}" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "Using version ${{ inputs.marketing_version }} ($BUILD_NUMBER)"
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen and ffmpeg
+        run: brew install xcodegen ffmpeg
+
+      - name: Decode signing files
+        env:
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$IOS_CERTIFICATE_P12_BASE64" ]; then
+            echo "::error::Missing secret IOS_CERTIFICATE_P12_BASE64"
+            exit 1
+          fi
+
+          if [ -z "$IOS_PROVISION_PROFILE_BASE64" ]; then
+            echo "::error::Missing secret IOS_PROVISION_PROFILE_BASE64"
+            exit 1
+          fi
+
+          decode_base64() {
+            if base64 --help 2>&1 | grep -q -- "--decode"; then
+              base64 --decode
+            else
+              base64 -D
+            fi
+          }
+
+          printf "%s" "$IOS_CERTIFICATE_P12_BASE64" | decode_base64 > "$RUNNER_TEMP/signing_certificate.p12"
+          printf "%s" "$IOS_PROVISION_PROFILE_BASE64" | decode_base64 > "$RUNNER_TEMP/profile.mobileprovision"
+
+      - name: Install Apple Distribution certificate
+        env:
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$IOS_CERTIFICATE_PASSWORD" ]; then
+            echo "::error::Missing secret IOS_CERTIFICATE_PASSWORD"
+            exit 1
+          fi
+
+          if [ -z "$KEYCHAIN_PASSWORD" ]; then
+            echo "::error::Missing secret KEYCHAIN_PASSWORD"
+            exit 1
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/signing_certificate.p12" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Prepare iOS app icon assets
+        run: |
+          set -euo pipefail
+          ICON_SRC="app/icons/icon.png"
+          ICON_DIR="ios/WorkWithApp/Assets.xcassets/AppIcon.appiconset"
+
+          if [ ! -f "$ICON_SRC" ]; then
+            echo "::error::Missing app icon source at $ICON_SRC"
+            exit 1
+          fi
+
+          mkdir -p "$ICON_DIR"
+          sips -z 40 40 "$ICON_SRC" --out "$ICON_DIR/AppIcon-40.png" >/dev/null
+          sips -z 60 60 "$ICON_SRC" --out "$ICON_DIR/AppIcon-60.png" >/dev/null
+          sips -z 58 58 "$ICON_SRC" --out "$ICON_DIR/AppIcon-58.png" >/dev/null
+          sips -z 87 87 "$ICON_SRC" --out "$ICON_DIR/AppIcon-87.png" >/dev/null
+          sips -z 80 80 "$ICON_SRC" --out "$ICON_DIR/AppIcon-80.png" >/dev/null
+          sips -z 120 120 "$ICON_SRC" --out "$ICON_DIR/AppIcon-120.png" >/dev/null
+          sips -z 120 120 "$ICON_SRC" --out "$ICON_DIR/AppIcon-120-large.png" >/dev/null
+          sips -z 180 180 "$ICON_SRC" --out "$ICON_DIR/AppIcon-180.png" >/dev/null
+          sips -z 1024 1024 "$ICON_SRC" --out "$ICON_DIR/AppIcon-1024.png" >/dev/null
+
+      - name: Prepare avatar video for iOS
+        run: |
+          set -euo pipefail
+          mkdir -p app/media/avatar
+
+          if [ -f app/media/avatar/avatar-animation.webm ]; then
+            ffmpeg -y \
+              -i app/media/avatar/avatar-animation.webm \
+              -c:v libx264 \
+              -pix_fmt yuv420p \
+              -movflags +faststart \
+              app/media/avatar/avatar-animation.mp4
+          fi
+
+          if [ ! -f app/media/avatar/avatar-animation.mp4 ] && [ ! -f app/media/avatar/avatar-animation.webm ]; then
+            echo "::error::Missing avatar animation source (mp4/webm)"
+            exit 1
+          fi
+
+      - name: Copy web app into iOS project
+        run: |
+          set -euo pipefail
+          rm -rf ios/BundledApp
+          rsync -a --exclude '.DS_Store' --exclude 'tools' app/ ios/BundledApp/
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec ios/project.yml --project ios
+
+      - name: Build unsigned iOS app bundle
+        run: |
+          set -o pipefail
+          mkdir -p ios/artifact
+          xcodebuild \
+            -project ios/WorkWith.xcodeproj \
+            -scheme WorkWith \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath ios/build \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            build 2>&1 | tee ios/artifact/build.log
+
+      - name: Prepare app bundle for signing
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -type d -name "$APP_NAME.app" | head -n 1)"
+
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::$APP_NAME.app not found in build products"
+            find ios/build -type d -name '*.app' || true
+            exit 1
+          fi
+
+          if [ ! -f "$APP_PATH/BundledApp/index.html" ]; then
+            rm -rf "$APP_PATH/BundledApp"
+            cp -R ios/BundledApp "$APP_PATH/BundledApp"
+          fi
+
+          if [ ! -f "$APP_PATH/BundledApp/index.html" ]; then
+            echo "::error::BundledApp/index.html is missing from $APP_NAME.app"
+            exit 1
+          fi
+
+          if [ ! -f "$APP_PATH/Assets.car" ]; then
+            echo "::error::Assets.car is missing, so the iOS app icon cannot be installed correctly"
+            exit 1
+          fi
+
+          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Sign app bundle
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+          ENTITLEMENTS_PLIST="$RUNNER_TEMP/entitlements.plist"
+
+          cp "$PROFILE_PATH" "$APP_PATH/embedded.mobileprovision"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          /usr/libexec/PlistBuddy -x -c "Print :Entitlements" "$PROFILE_PLIST" > "$ENTITLEMENTS_PLIST"
+
+          PROFILE_APP_ID="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$PROFILE_PLIST")"
+          PROFILE_BUNDLE_ID="${PROFILE_APP_ID#*.}"
+          APP_BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")"
+
+          echo "Profile bundle id: $PROFILE_BUNDLE_ID"
+          echo "App bundle id: $APP_BUNDLE_ID"
+
+          if [ "$APP_BUNDLE_ID" != "$BUNDLE_ID" ]; then
+            echo "::error::Built app bundle id is $APP_BUNDLE_ID, expected $BUNDLE_ID"
+            exit 1
+          fi
+
+          if [ "$PROFILE_BUNDLE_ID" != "$BUNDLE_ID" ]; then
+            echo "::error::Provisioning profile bundle id is $PROFILE_BUNDLE_ID, expected $BUNDLE_ID"
+            exit 1
+          fi
+
+          SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F '"' '/Apple Distribution/ { print $2; exit }')"
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "::error::No Apple Distribution signing identity found in the temporary keychain"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+
+          echo "Signing with: $SIGNING_IDENTITY"
+          rm -rf "$APP_PATH/_CodeSignature"
+          codesign \
+            --force \
+            --sign "$SIGNING_IDENTITY" \
+            --entitlements "$ENTITLEMENTS_PLIST" \
+            --timestamp=none \
+            "$APP_PATH"
+
+          codesign --verify --strict --verbose=2 "$APP_PATH"
+          codesign -dv --verbose=4 "$APP_PATH"
+
+      - name: Package signed IPA
+        run: |
+          set -euo pipefail
+          rm -rf ios/artifact/Payload
+          mkdir -p ios/artifact/Payload
+          cp -R "$APP_PATH" ios/artifact/Payload/
+
+          (
+            cd ios/artifact
+            ditto -c -k --sequesterRsrc --keepParent Payload WorkWith-signed.ipa
+          )
+
+          ls -lh ios/artifact/WorkWith-signed.ipa
+
+      - name: Upload signed IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorkWith-signed-ipa
+          path: |
+            ios/artifact/WorkWith-signed.ipa
+            ios/artifact/build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Decode App Store Connect API key
+        if: ${{ inputs.upload_to_testflight }}
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$APP_STORE_CONNECT_API_KEY_ID" ]; then
+            echo "::error::Missing secret APP_STORE_CONNECT_API_KEY_ID"
+            exit 1
+          fi
+
+          if [ -z "$APP_STORE_CONNECT_API_KEY_P8_BASE64" ]; then
+            echo "::error::Missing secret APP_STORE_CONNECT_API_KEY_P8_BASE64"
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/private_keys"
+          decode_base64() {
+            if base64 --help 2>&1 | grep -q -- "--decode"; then
+              base64 --decode
+            else
+              base64 -D
+            fi
+          }
+
+          printf "%s" "$APP_STORE_CONNECT_API_KEY_P8_BASE64" | decode_base64 > "$RUNNER_TEMP/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+
+      - name: Upload to TestFlight
+        if: ${{ inputs.upload_to_testflight }}
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$APP_STORE_CONNECT_API_ISSUER_ID" ]; then
+            echo "::error::Missing secret APP_STORE_CONNECT_API_ISSUER_ID"
+            exit 1
+          fi
+
+          API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/private_keys" \
+            xcrun altool \
+              --upload-app \
+              --type ios \
+              --file ios/artifact/WorkWith-signed.ipa \
+              --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+              --apiIssuer "$APP_STORE_CONNECT_API_ISSUER_ID"
