@@ -16,6 +16,7 @@ settings:
     INFOPLIST_KEY_CFBundleDisplayName: WorkWith
     INFOPLIST_KEY_NSCameraUsageDescription: WorkWith는 운동 분석 중 카메라 사용 상태를 표시하기 위해 카메라 권한을 요청합니다.
     INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+    INFOPLIST_KEY_UIRequiresFullScreen: YES
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     CODE_SIGN_STYLE: Automatic
 
@@ -24,6 +25,10 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "16.0"
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: 1
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
     sources:
       - path: WorkWithApp
     resources:
@@ -35,3 +40,4 @@ schemes:
     build:
       targets:
         WorkWith: all
+
